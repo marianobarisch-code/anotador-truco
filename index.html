@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#3a2414">
+<title>Anotador de Truco</title>
+<style>
+  :root{
+    --gold:#c9a227;
+    --gold-soft:#b08d2e;
+    --stick:#ece0c2;
+    --tip:#c0392b;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ height:100%; margin:0; overflow:hidden; }
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    user-select:none; -webkit-user-select:none;
+    background:#3a2414; color:#fff;
+  }
+  .app{ position:fixed; inset:0; display:flex; flex-direction:column; }
+
+  /* ---------- Madera (fondo) ---------- */
+  .wood{ position:absolute; inset:0; width:100%; height:100%; z-index:0; }
+  .planks{
+    position:absolute; inset:0; z-index:1; pointer-events:none;
+    background:
+      repeating-linear-gradient(90deg,
+        rgba(0,0,0,0.0) 0 86px,
+        rgba(0,0,0,0.28) 87px 89px,
+        rgba(255,255,255,0.04) 90px 91px);
+  }
+
+  /* ---------- Header ---------- */
+  header{
+    position:relative; z-index:3; flex:0 0 auto;
+    height:56px; display:flex; align-items:center; justify-content:space-between;
+    padding:0 14px; background:#3a2414;
+    border-bottom:1.5px solid var(--gold-soft);
+    padding-top:env(safe-area-inset-top);
+    height:calc(56px + env(safe-area-inset-top));
+  }
+  .circle-btn{
+    width:36px; height:36px; border-radius:50%;
+    border:1.5px solid var(--gold-soft); background:transparent;
+    color:var(--gold-soft); font-size:20px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .title{ color:var(--gold); font-size:20px; font-weight:600; letter-spacing:.5px; }
+
+  /* ---------- Tablero ---------- */
+  .screen{ position:relative; z-index:2; flex:1 1 auto; }
+  .heads{ display:flex; padding:16px 0 0; }
+  .heads > div{ flex:1; text-align:center; }
+  .heads span{
+    color:#fff; font-size:22px; font-weight:500;
+    border-bottom:2px solid var(--gold); padding:0 16px 4px;
+  }
+
+  .board{ position:absolute; left:0; right:0; top:60px; bottom:96px; }
+  .vline{ position:absolute; left:50%; top:0; bottom:0; width:1.5px; background:var(--gold-soft); transform:translateX(-50%); }
+  .hline{ position:absolute; left:62px; right:62px; top:50%; height:1.5px; background:var(--gold-soft); transform:translateY(-50%); }
+
+  .col{
+    position:absolute; width:50%; display:flex; flex-direction:column;
+    align-items:center; gap:8px; padding-top:10px;
+  }
+  .malas{  top:0; height:50%; }
+  .buenas{ top:50%; height:50%; }
+  .nos{ left:0; } .ell{ right:0; }
+  .col svg{ width:58px; height:58px; }
+
+  .controls{
+    position:absolute; top:50%; transform:translateY(-50%);
+    display:flex; flex-direction:column; gap:20px; z-index:4;
+  }
+  .controls.left{ left:8px; } .controls.right{ right:8px; }
+  .rbtn{
+    width:52px; height:52px; border-radius:50%;
+    border:2.5px solid #fff; background:rgba(0,0,0,0.12); color:#fff;
+    font-size:28px; line-height:1; cursor:pointer; padding:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .rbtn:active{ transform:scale(0.92); }
+
+  /* ---------- Pie ---------- */
+  footer{
+    position:relative; z-index:3; flex:0 0 auto;
+    display:flex; justify-content:center; align-items:center;
+    padding:14px 0 calc(18px + env(safe-area-inset-bottom));
+  }
+  .new-game{
+    background:rgba(0,0,0,0.25); color:#fff;
+    border:1px solid var(--gold-soft); border-radius:10px;
+    padding:13px 30px; font-size:17px; cursor:pointer;
+  }
+  .new-game:active{ transform:scale(0.97); }
+
+  /* ---------- Cartel de ganador ---------- */
+  .winner{
+    position:absolute; inset:0; z-index:10; display:none;
+    align-items:center; justify-content:center; flex-direction:column;
+    background:rgba(0,0,0,0.55);
+  }
+  .winner.show{ display:flex; }
+  .winner .card{
+    background:#3a2414; border:2px solid var(--gold);
+    border-radius:16px; padding:26px 34px; text-align:center;
+  }
+  .winner h2{ margin:0 0 6px; color:var(--gold); font-size:26px; }
+  .winner p{ margin:0 0 18px; font-size:18px; }
+  .winner button{
+    background:var(--gold); color:#3a2414; border:none;
+    border-radius:10px; padding:12px 26px; font-size:16px; font-weight:600; cursor:pointer;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Fondo de madera realista -->
+  <svg class="wood" preserveAspectRatio="none" viewBox="0 0 400 800" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <filter id="grain" x="0" y="0" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.9 0.012" numOctaves="5" seed="14" result="n"/>
+        <feColorMatrix in="n" type="matrix"
+          values="0 0 0 0 0.30
+                  0 0 0 0 0.17
+                  0 0 0 0 0.07
+                  0.75 0 0 0 -0.18"/>
+      </filter>
+      <filter id="knots" x="0" y="0" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.02 0.05" numOctaves="3" seed="7" result="k"/>
+        <feColorMatrix in="k" type="matrix"
+          values="0 0 0 0 0.20
+                  0 0 0 0 0.11
+                  0 0 0 0 0.04
+                  0.5 0 0 0 -0.25"/>
+      </filter>
+    </defs>
+    <rect width="400" height="800" fill="#5e3a20"/>
+    <rect width="400" height="800" filter="url(#knots)"/>
+    <rect width="400" height="800" filter="url(#grain)"/>
+  </svg>
+  <div class="planks"></div>
+
+  <!-- Header -->
+  <header>
+    <button class="circle-btn" aria-label="Atrás">&#8592;</button>
+    <div class="title">Anotador</div>
+    <button class="circle-btn" aria-label="Menú">&#9776;</button>
+  </header>
+
+  <!-- Tablero -->
+  <div class="screen">
+    <div class="heads">
+      <div><span id="name-nos">Nos:</span></div>
+      <div><span id="name-ell">Ellos:</span></div>
+    </div>
+
+    <div class="board">
+      <div class="vline"></div>
+      <div class="hline"></div>
+
+      <div class="col nos malas"  id="nos-malas"></div>
+      <div class="col nos buenas" id="nos-buenas"></div>
+      <div class="col ell malas"  id="ell-malas"></div>
+      <div class="col ell buenas" id="ell-buenas"></div>
+
+      <div class="controls left">
+        <button class="rbtn" data-t="nos" data-d="1" aria-label="Sumar a Nosotros">+</button>
+        <button class="rbtn" data-t="nos" data-d="-1" aria-label="Restar a Nosotros">&#8722;</button>
+      </div>
+      <div class="controls right">
+        <button class="rbtn" data-t="ell" data-d="1" aria-label="Sumar a Ellos">+</button>
+        <button class="rbtn" data-t="ell" data-d="-1" aria-label="Restar a Ellos">&#8722;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pie -->
+  <footer>
+    <button class="new-game" id="new-game">Nuevo partido</button>
+  </footer>
+
+  <!-- Ganador -->
+  <div class="winner" id="winner">
+    <div class="card">
+      <h2>¡Buen partido!</h2>
+      <p id="winner-text">Ganó Nos</p>
+      <button id="winner-new">Nuevo partido</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var SVGNS="http://www.w3.org/2000/svg";
+  var LIMIT=30;
+  var score={nos:0, ell:0};
+  var names={nos:"Nos:", ell:"Ellos:"};
+
+  /* ---- guardar / cargar ---- */
+  function save(){
+    try{ localStorage.setItem("truco", JSON.stringify({score:score, names:names})); }catch(e){}
+  }
+  function load(){
+    try{
+      var d=JSON.parse(localStorage.getItem("truco")||"null");
+      if(d){ if(d.score) score=d.score; if(d.names) names=d.names; }
+    }catch(e){}
+  }
+
+  /* ---- dibujar un fósforo y un cuadrado ---- */
+  function line(x1,y1,x2,y2){
+    var l=document.createElementNS(SVGNS,"line");
+    l.setAttribute("x1",x1);l.setAttribute("y1",y1);l.setAttribute("x2",x2);l.setAttribute("y2",y2);
+    l.setAttribute("stroke","var(--stick)");l.setAttribute("stroke-width","5");l.setAttribute("stroke-linecap","round");
+    return l;
+  }
+  function tip(x,y){
+    var c=document.createElementNS(SVGNS,"circle");
+    c.setAttribute("cx",x);c.setAttribute("cy",y);c.setAttribute("r","4.5");c.setAttribute("fill","var(--tip)");
+    return c;
+  }
+  function square(n){
+    var s=document.createElementNS(SVGNS,"svg");
+    s.setAttribute("viewBox","0 0 60 60");
+    var a=10,b=50;
+    var seg=[[a,a,b,a],[b,a,b,b],[b,b,a,b],[a,b,a,a],[a,b,b,a]];
+    for(var i=0;i<n;i++){
+      var g=seg[i];
+      s.appendChild(line(g[0],g[1],g[2],g[3]));
+      s.appendChild(tip(g[0],g[1])); s.appendChild(tip(g[2],g[3]));
+    }
+    return s;
+  }
+  function fill(box, pts){
+    box.innerHTML="";
+    var full=Math.floor(pts/5), rem=pts%5, i;
+    for(i=0;i<full;i++) box.appendChild(square(5));
+    if(rem>0) box.appendChild(square(rem));
+  }
+
+  /* ---- render ---- */
+  var $=function(id){return document.getElementById(id);};
+  function render(){
+    fill($("nos-malas"),  Math.min(15,score.nos));
+    fill($("nos-buenas"), Math.max(0,score.nos-15));
+    fill($("ell-malas"),  Math.min(15,score.ell));
+    fill($("ell-buenas"), Math.max(0,score.ell-15));
+    $("name-nos").textContent=names.nos;
+    $("name-ell").textContent=names.ell;
+    save();
+    checkWin();
+  }
+  function checkWin(){
+    var w=null;
+    if(score.nos>=LIMIT) w="nos";
+    else if(score.ell>=LIMIT) w="ell";
+    if(w){
+      $("winner-text").textContent="Ganó "+names[w].replace(":","");
+      $("winner").classList.add("show");
+    }else{
+      $("winner").classList.remove("show");
+    }
+  }
+
+  /* ---- eventos ---- */
+  function bump(t,d){
+    score[t]=Math.max(0,Math.min(LIMIT,score[t]+d));
+    render();
+  }
+  document.querySelectorAll(".rbtn").forEach(function(b){
+    b.addEventListener("click",function(){
+      bump(b.getAttribute("data-t"), parseInt(b.getAttribute("data-d"),10));
+    });
+  });
+  function reset(){ score={nos:0,ell:0}; render(); }
+  $("new-game").addEventListener("click",reset);
+  $("winner-new").addEventListener("click",reset);
+
+  /* ---- renombrar equipos (tocar el nombre) ---- */
+  function rename(t){
+    var actual=names[t].replace(":","");
+    var nuevo=prompt("Nombre del equipo:", actual);
+    if(nuevo!==null && nuevo.trim()!==""){ names[t]=nuevo.trim()+":"; render(); }
+  }
+  $("name-nos").addEventListener("click",function(){rename("nos");});
+  $("name-ell").addEventListener("click",function(){rename("ell");});
+
+  load();
+  render();
+})();
+</script>
+</body>
+</html>
