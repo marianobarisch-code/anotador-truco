@@ -36,15 +36,16 @@
   .heads > div{ flex:1; text-align:center; padding:0 6px; }
   .heads .nm{ color:#fff; font-size:21px; font-weight:500; border-bottom:2px solid var(--gold); padding:0 12px 4px; display:inline-block; }
   .heads .pl{ display:block; color:#e7d6a8; font-size:12px; margin-top:7px; line-height:1.45; }
-  .board{ position:absolute; left:0; right:0; top:84px; bottom:8px; }
+  .board{ position:absolute; left:0; right:0; top:104px; bottom:8px; }
   .vline{ position:absolute; left:50%; top:0; bottom:0; width:1.5px; background:var(--line); transform:translateX(-50%); }
   .hline{ position:absolute; left:62px; right:62px; top:50%; height:1.5px; background:var(--line); transform:translateY(-50%); }
   .col{ position:absolute; width:50%; display:flex; flex-direction:column; align-items:center; gap:8px; }
-  /* Bandas compactas pegadas a la cruz: malas arriba (empiezan arriba y caen), buenas abajo, simétricas */
-  .malas{ bottom:calc(50% + 8px); height:154px; justify-content:flex-start; }
-  .buenas{ top:calc(50% + 8px); height:154px; justify-content:flex-start; }
+  /* Fósforos grandes: malas llenan desde abajo de los nombres hasta la cruz; buenas desde la cruz hacia abajo. Simétricos. */
+  .malas{ top:0; height:50%; justify-content:space-between; padding:42px 0 10px; }
+  .buenas{ top:50%; height:50%; justify-content:space-between; padding:10px 0 26px; }
   .cnos{ left:0; } .cell{ right:0; }
-  .col svg{ width:46px; height:46px; }
+  .slot-sq{ width:80px; height:80px; display:flex; align-items:center; justify-content:center; }
+  .col svg{ width:80px; height:80px; }
   .ctrls{ position:absolute; top:50%; transform:translateY(-50%); display:flex; flex-direction:column; gap:18px; z-index:3; }
   .ctrls.l{ left:6px; } .ctrls.r{ right:6px; }
   .rbtn{ width:50px; height:50px; border-radius:50%; border:2.5px solid #fff; background:rgba(0,0,0,0.12); color:#fff; font-size:27px; }
@@ -211,6 +212,8 @@
     return s+'</svg>';
   }
   function colHTML(pts){ var full=Math.floor(pts/5), rem=pts%5, out=''; for(var i=0;i<full;i++)out+=squareSVG(5); if(rem>0)out+=squareSVG(rem); return out; }
+  // 3 lugares fijos por mitad: cada cuadrado siempre en su posición (como anotador real)
+  function slotsHTML(pts){ var out=''; for(var s=0;s<3;s++){ var base=s*5; var n = pts>=base+5 ? 5 : (pts>base ? pts-base : 0); out+='<div class="slot-sq">'+(n>0?squareSVG(n):'')+'</div>'; } return out; }
 
   /* ---------- render ---------- */
   function render(){
@@ -236,10 +239,10 @@
           '<div class="board">'+
             '<div class="score-pill"><span>'+g.score[0]+'</span><span style="color:var(--gold-soft)">·</span><span>'+g.score[1]+'</span></div>'+
             '<div class="vline"></div><div class="hline"></div>'+
-            '<div class="col cnos malas">'+colHTML(Math.min(15,g.score[0]))+'</div>'+
-            '<div class="col cnos buenas">'+colHTML(Math.max(0,g.score[0]-15))+'</div>'+
-            '<div class="col cell malas">'+colHTML(Math.min(15,g.score[1]))+'</div>'+
-            '<div class="col cell buenas">'+colHTML(Math.max(0,g.score[1]-15))+'</div>'+
+            '<div class="col cnos malas">'+slotsHTML(Math.min(15,g.score[0]))+'</div>'+
+            '<div class="col cnos buenas">'+slotsHTML(Math.max(0,g.score[0]-15))+'</div>'+
+            '<div class="col cell malas">'+slotsHTML(Math.min(15,g.score[1]))+'</div>'+
+            '<div class="col cell buenas">'+slotsHTML(Math.max(0,g.score[1]-15))+'</div>'+
             '<div class="ctrls l"><button class="rbtn" data-action="plus" data-t="0">+</button><button class="rbtn" data-action="minus" data-t="0">−</button></div>'+
             '<div class="ctrls r"><button class="rbtn" data-action="plus" data-t="1">+</button><button class="rbtn" data-action="minus" data-t="1">−</button></div>'+
           '</div>';
