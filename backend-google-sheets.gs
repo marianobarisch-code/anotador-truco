@@ -3,20 +3,24 @@
  * ------------------------------------------------
  * Pegá este código en: tu planilla -> Extensiones -> Apps Script.
  * Pasos:
- *   1) Cambiá TOKEN por una clave secreta tuya.
- *   2) Ejecutá una vez la función setup()  (crea las 3 pestañas).
- *   3) Implementar -> Nueva implementación -> Aplicación web
+ *   1) TOKEN ya está puesto (debe coincidir con el del cliente).
+ *   2) Ejecutá una vez la función setup()  (crea/ordena las 3 pestañas).
+ *   3) Implementar -> Nueva implementación (o editar la existente) -> Aplicación web
  *      "Quién tiene acceso": Cualquier persona. Copiá la URL /exec.
+ *
+ * Métricas de plata: por persona. Si ganás y el rival quedó en las malas
+ * (0–14 puntos) se cobra el monto DOBLE; si llegó a buenas (>=15), el SIMPLE.
+ * El cliente manda el "monto" ya resuelto por partida.
  */
 
-const TOKEN = 'cambia-esta-clave-secreta';   // <-- poné tu clave
+const TOKEN = 'truco-barisch-7H2k9';
 
 const T_JUG = 'jugadores';
 const T_PAR = 'partidas';
 const T_DET = 'partidas_jugadores';
 
 const H_JUG = ['id_jugador','nombre','apellido','jugados','ganados','perdidos','puntos','promedio','fecha_alta'];
-const H_PAR = ['id_partida','fecha','modo','equipo_1','equipo_2','ganador','puntos'];
+const H_PAR = ['id_partida','fecha','torneo','modo','equipo_1','equipo_2','ganador','puntos','apuesta_simple','apuesta_doble','monto'];
 const H_DET = ['id_partida','id_jugador','equipo','resultado'];
 
 /* === Crea las pestañas con sus títulos (ejecutar una vez) === */
@@ -29,7 +33,7 @@ function setup() {
 function ensureSheet_(ss, name, headers) {
   let sh = ss.getSheetByName(name);
   if (!sh) sh = ss.insertSheet(name);
-  if (sh.getLastRow() === 0) sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sh.getRange(1, 1, 1, headers.length).setValues([headers]);   // siempre reescribe encabezados
 }
 
 /* === LEER (ranking + historial) === */
@@ -71,9 +75,13 @@ function guardarPartida_(body) {
 
   // 2) Registrar la partida
   const idPartida = 'P' + shP.getLastRow();            // P1, P2, ...
-  shP.appendRow([ idPartida, new Date(), body.modo || '', eq[1].join(','), eq[2].join(','), 'Equipo ' + body.ganador, body.puntos || '' ]);
+  shP.appendRow([
+    idPartida, new Date(), body.torneo || '', body.modo || '',
+    eq[1].join(','), eq[2].join(','), 'Equipo ' + body.ganador, body.puntos || '',
+    body.apuesta_simple || '', body.apuesta_doble || '', body.monto || ''
+  ]);
 
-  // 3) Detalle por jugador + actualizar métricas
+  // 3) Detalle por jugador + actualizar métricas (victorias, NO plata)
   [1, 2].forEach(function (t) {
     const gano = (t === Number(body.ganador));
     eq[t].forEach(function (id) {
@@ -82,18 +90,24 @@ function guardarPartida_(body) {
     });
   });
 
-  return { ok:true, id_partida: idPartida, jugadores: leerTabla_(T_JUG) };
+  return { ok:true, id_partida: idPartida, jugadores: leerTabla_(T_JUG), partidas: leerTabla_(T_PAR) };
 }
 
+// Mismo nombre+apellido = misma persona (no duplica jugadores)
 function asegurarJugador_(shJ, p) {
   const data = shJ.getDataRange().getValues();
   if (p.id) {
     for (var i = 1; i < data.length; i++) if (String(data[i][0]) === String(p.id)) return data[i][0];
   }
+  const nom = norm_(p.nombre), ape = norm_(p.apellido);
+  for (var j = 1; j < data.length; j++) {
+    if (norm_(data[j][1]) === nom && norm_(data[j][2]) === ape) return data[j][0];
+  }
   const id = 'J' + data.length;                        // J1, J2, ...
   shJ.appendRow([ id, p.nombre || '', p.apellido || '', 0, 0, 0, 0, '0%', new Date() ]);
   return id;
 }
+function norm_(s) { return String(s == null ? '' : s).trim().toLowerCase(); }
 
 function actualizarMetricas_(shJ, id, gano) {
   const data = shJ.getDataRange().getValues();

@@ -9,7 +9,7 @@
   :root{ --gold:#d8b53e; --gold-soft:#b08d2e; --line:#b08d2e; --ink:#3a2414; --stick:#ece0c2; --tip:#c0392b; }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html,body{ height:100%; margin:0; overflow:hidden; }
-  body{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color:#fff; background:#15100b; user-select:none; -webkit-user-select:none; }
+  body{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color:#fff; background:#15100b; user-select:none; -webkit-user-select:none; touch-action:manipulation; }
   button{ font-family:inherit; }
 
   /* Marco tamaño celular: centrado, mismo look en compu o teléfono */
@@ -48,7 +48,7 @@
   .col svg{ width:80px; height:80px; }
   .ctrls{ position:absolute; top:50%; transform:translateY(-50%); display:flex; flex-direction:column; gap:18px; z-index:3; }
   .ctrls.l{ left:6px; } .ctrls.r{ right:6px; }
-  .rbtn{ width:50px; height:50px; border-radius:50%; border:2.5px solid #fff; background:rgba(0,0,0,0.12); color:#fff; font-size:27px; }
+  .rbtn{ width:50px; height:50px; border-radius:50%; border:2.5px solid #fff; background:rgba(0,0,0,0.12); color:#fff; font-size:27px; touch-action:manipulation; }
   .rbtn:active{ transform:scale(.92); }
   .score-pill{ position:absolute; top:6px; left:50%; transform:translateX(-50%); z-index:3; display:flex; gap:18px; align-items:center;
     background:rgba(0,0,0,0.3); border:1px solid var(--gold-soft); border-radius:20px; padding:4px 16px; font-size:14px; }
@@ -71,6 +71,22 @@
   .modes{ display:flex; gap:10px; margin-bottom:18px; }
   .mode{ flex:1; text-align:center; padding:12px 0; border-radius:10px; border:1px solid #6e5024; background:rgba(0,0,0,0.18); color:#cdbf9a; font-size:15px; }
   .mode.on{ border:2px solid var(--gold); background:rgba(216,181,62,0.12); color:#f0e2b6; font-weight:500; }
+  .mode .sub{ display:block; font-size:11px; color:#cdbf9a; margin-top:3px; font-weight:400; }
+  /* dropdown torneo */
+  .ddwrap{ position:relative; margin-bottom:18px; }
+  .dropdown{ width:100%; padding:13px 38px 13px 13px; border-radius:10px; border:1px solid #6e5024; background:rgba(0,0,0,0.25);
+    color:#f0e2b6; font-size:15px; font-family:inherit; -webkit-appearance:none; appearance:none; outline:none; }
+  .dropdown:focus{ border-color:var(--gold); }
+  .ddchev{ position:absolute; right:12px; top:50%; transform:translateY(-50%); pointer-events:none; color:#cdbf9a; display:flex; }
+  /* inputs de apuesta custom */
+  .apinputs{ display:flex; gap:10px; margin-bottom:18px; }
+  .apinputs > div{ flex:1; }
+  .apinputs .label{ font-size:11px; margin:0 0 5px 2px; }
+  .apin{ display:flex; align-items:center; gap:6px; background:rgba(0,0,0,0.3); border:1px solid var(--gold-soft); border-radius:10px; padding:0 12px; }
+  .apin:focus-within{ border-color:var(--gold); }
+  .apin .ps{ color:var(--gold); font-size:16px; }
+  .apin input{ flex:1; min-width:0; background:transparent; border:none; outline:none; color:#fff; font-size:16px; padding:12px 0; }
+  .apin input::placeholder{ color:#9c8a63; }
   .teamblock{ margin-bottom:16px; }
   .slot{ display:flex; align-items:center; justify-content:space-between; border-radius:10px; padding:11px 12px; margin-bottom:8px; font-size:15px; }
   .slot.filled{ background:rgba(216,181,62,0.14); border:1px solid var(--gold-soft); color:#fff; }
@@ -87,9 +103,12 @@
   .rk-name{ flex:1; display:flex; align-items:center; gap:9px; min-width:0; }
   .rk-name .pos{ width:20px; color:var(--gold); font-size:13px; text-align:center; flex:0 0 auto; }
   .rk-name .full2{ font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .stat{ width:38px; text-align:center; font-size:14px; color:#d8cba0; flex:0 0 auto; }
+  .stat{ width:34px; text-align:center; font-size:14px; color:#d8cba0; flex:0 0 auto; }
   .stat.on{ color:#fff; font-weight:600; }
+  .stat.money{ width:56px; font-size:13px; }
+  .stat.pos{ color:#7ec47e; } .stat.neg{ color:#e08b80; }
   .rk-head .stat{ font-size:12px; color:#9c8a63; }
+  .rk-empty{ text-align:center; color:#9c8a63; font-size:14px; padding:34px 16px; }
 
   /* ---- Overlays ---- */
   .scrim{ position:absolute; inset:0; z-index:20; background:rgba(0,0,0,0.55); display:none; }
@@ -177,10 +196,12 @@
   var state={
     view:"anotador",
     players:[],
+    partidas:[],
     nextId:1,
     active:null,
-    setup:{torneo:null, modo:3, teams:[[null,null,null],[null,null,null]]},
+    setup:{torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom", simple:null, doble:null}},
     rankSort:"g",
+    rankScope:"global",
     sheet:null,
     search:"",
     cargando:true,
@@ -199,6 +220,11 @@
   function fullname(p){ return p.nombre+" "+p.apellido; }
   function prom(p){ return p.pj? Math.round(p.g/p.pj*100)+"%":"—"; }
   function chosenIds(){ var a=[]; state.setup.teams.forEach(function(t){t.forEach(function(id){if(id)a.push(id);});}); return a; }
+  function miles(n){ return String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g,"."); }
+  function pesos(n){ return "$"+miles(n); }                                  // $10.000
+  function plataCorta(n){ var a=Math.abs(n), s=n<0?"−":(n>0?"+":""), str;     // +$10k / −$2.5k
+    if(a>=1000){ var k=a/1000; str=(k%1===0?k:k.toFixed(1).replace(/\.0$/,""))+"k"; } else { str=""+a; }
+    return s+"$"+str; }
 
   /* ---------- API (Google Sheets) ---------- */
   function mapJug(arr){ return (arr||[]).map(function(j){ return {id:j.id_jugador, nombre:j.nombre, apellido:j.apellido, pj:Number(j.jugados)||0, g:Number(j.ganados)||0}; }); }
@@ -207,7 +233,7 @@
   function cargar(){
     state.cargando=true; state.errorMsg=""; render();
     apiGet().then(function(d){
-      if(d&&d.ok){ state.players=mapJug(d.jugadores); state.errorMsg=""; }
+      if(d&&d.ok){ state.players=mapJug(d.jugadores); state.partidas=d.partidas||[]; state.errorMsg=""; }
       else { state.errorMsg="No se pudo leer la base"; }
       state.cargando=false; render();
     }).catch(function(){ state.cargando=false; state.errorMsg="Sin conexión con la base"; render(); });
@@ -242,6 +268,24 @@
   function colHTML(pts){ var full=Math.floor(pts/5), rem=pts%5, out=''; for(var i=0;i<full;i++)out+=squareSVG(5); if(rem>0)out+=squareSVG(rem); return out; }
   // 3 lugares fijos por mitad: cada cuadrado siempre en su posición (como anotador real)
   function slotsHTML(pts){ var out=''; for(var s=0;s<3;s++){ var base=s*5; var n = pts>=base+5 ? 5 : (pts>base ? pts-base : 0); out+='<div class="slot-sq">'+(n>0?squareSVG(n):'')+'</div>'; } return out; }
+
+  /* ---------- ranking: stats calculadas desde las partidas ---------- */
+  // scope: "global" | "Famosa" | "Telaso". Mismo nombre = misma persona. Mix cuenta solo en global.
+  function statsFor(scope){
+    var by={};
+    function nameOf(id){ var p=player(String(id)); return p?fullname(p):String(id); }
+    function ensure(id){ var nm=nameOf(id); if(!by[nm]) by[nm]={name:nm,pj:0,g:0,plata:0}; return by[nm]; }
+    (state.partidas||[]).forEach(function(pa){
+      if(scope!=="global" && String(pa.torneo)!==scope) return;
+      var e1=String(pa.equipo_1||"").split(",").map(function(s){return s.trim();}).filter(Boolean);
+      var e2=String(pa.equipo_2||"").split(",").map(function(s){return s.trim();}).filter(Boolean);
+      var ganEq=String(pa.ganador).indexOf("2")>=0?2:1;
+      var monto=Number(pa.monto)||0;
+      e1.forEach(function(id){ var r=ensure(id); r.pj++; if(ganEq===1){r.g++; r.plata+=monto;} else r.plata-=monto; });
+      e2.forEach(function(id){ var r=ensure(id); r.pj++; if(ganEq===2){r.g++; r.plata+=monto;} else r.plata-=monto; });
+    });
+    return Object.keys(by).map(function(k){return by[k];});
+  }
 
   /* ---------- render ---------- */
   function render(){
@@ -287,10 +331,24 @@
 
     else if(v==="nueva"){
       title.textContent="Nueva partida"; hr.style.visibility="hidden";
-      var m=state.setup.modo, slots=m, tor=state.setup.torneo;
+      var m=state.setup.modo, slots=m, tor=state.setup.torneo, ap=state.setup.apuesta;
       var html='<div class="scroll">'+
-        '<div class="label">Torneo</div><div class="modes">'+
-        ['Telaso','Famosa','Mix'].map(function(tn){ return '<div class="mode'+(tor===tn?' on':'')+'" data-action="torneo" data-tn="'+tn+'">'+tn+'</div>'; }).join('')+'</div>'+
+        '<div class="label">Torneo</div>'+
+        '<div class="ddwrap"><select class="dropdown" data-change="torneo">'+
+          '<option value=""'+(tor?'':' selected')+'>Seleccionar…</option>'+
+          ['Telaso','Famosa','Mix'].map(function(tn){ return '<option value="'+tn+'"'+(tor===tn?' selected':'')+'>'+tn+'</option>'; }).join('')+
+        '</select><span class="ddchev">'+ic("chevron",18)+'</span></div>'+
+        '<div class="label">Apuesta <span style="color:#9c8a63">(simple / doble)</span></div><div class="modes">'+
+          '<div class="mode'+(ap.preset==="p5"?' on':'')+'" data-action="apuesta" data-preset="p5" data-s="5000" data-d="10000">$5.000<span class="sub">doble $10.000</span></div>'+
+          '<div class="mode'+(ap.preset==="p10"?' on':'')+'" data-action="apuesta" data-preset="p10" data-s="10000" data-d="20000">$10.000<span class="sub">doble $20.000</span></div>'+
+          '<div class="mode'+(ap.preset==="custom"?' on':'')+'" data-action="apuesta" data-preset="custom">Custom<span class="sub">a mano</span></div>'+
+        '</div>'+
+        (ap.preset==="custom"
+          ? '<div class="apinputs">'+
+              '<div><div class="label">Simple</div><div class="apin"><span class="ps">$</span><input id="apSimple" inputmode="numeric" placeholder="0" value="'+(ap.simple||"")+'"></div></div>'+
+              '<div><div class="label">Doble</div><div class="apin"><span class="ps">$</span><input id="apDoble" inputmode="numeric" placeholder="0" value="'+(ap.doble||"")+'"></div></div>'+
+            '</div>'
+          : '')+
         '<div class="label">Modo de juego</div><div class="modes">'+
         '<div class="mode'+(m===2?' on':'')+'" data-action="mode" data-m="2">2 vs 2</div>'+
         '<div class="mode'+(m===3?' on':'')+'" data-action="mode" data-m="3">3 vs 3</div></div>';
@@ -308,34 +366,50 @@
       });
       html+='</div>';
       view.innerHTML=html;
-      var done=tor && chosenIds().length===slots*2;
+      function apOk(){ return ap.simple>0 && ap.doble>0; }
+      function listo(){ return tor && apOk() && chosenIds().length===slots*2; }
       bar.className="actions";
       bar.innerHTML='<button class="ghost" data-action="nav:anotador">Cancelar</button>'+
-        '<button class="primary full" '+(done?'':'style="opacity:.4"')+' data-action="'+(done?'start':'noop')+'">Iniciar partida</button>';
+        '<button id="startBtn" class="primary full" data-action="noop">Iniciar partida</button>';
+      function syncStart(){ var b=$("#startBtn"); if(!b)return; var ok=listo(); b.style.opacity=ok?"":".4"; b.setAttribute("data-action",ok?"start":"noop"); }
+      var aps=$("#apSimple"), apd=$("#apDoble");
+      if(aps){ aps.oninput=function(){ ap.simple=parseInt(this.value.replace(/\D/g,""),10)||null; syncStart(); }; }
+      if(apd){ apd.oninput=function(){ ap.doble=parseInt(this.value.replace(/\D/g,""),10)||null; syncStart(); }; }
+      syncStart();
     }
 
     else if(v==="ranking"){
       title.textContent="Ranking"; hr.style.visibility="hidden";
-      var key=state.rankSort;
-      var sorted=state.players.slice().sort(function(a,b){
+      var key=state.rankSort, scope=state.rankScope;
+      var rows=statsFor(scope).sort(function(a,b){
         if(key==="g") return b.g-a.g;
         if(key==="pj") return b.pj-a.pj;
         if(key==="p") return (b.pj-b.g)-(a.pj-a.g);
+        if(key==="plata") return b.plata-a.plata;
         return (b.pj?b.g/b.pj:0)-(a.pj?a.g/a.pj:0);
       });
-      var chips=[["pj","Partidos"],["g","Victorias"],["p","Derrotas"],["prom","Promedio"]];
-      var h='<div class="scroll"><div class="sorts">';
-      chips.forEach(function(c){ h+='<div class="chip'+(key===c[0]?' on':'')+'" data-action="rank:sort" data-k="'+c[0]+'">'+c[1]+'</div>'; });
+      var scopes=[["global","Global"],["Famosa","Famosa"],["Telaso","Telaso"]];
+      var h='<div class="scroll"><div class="modes">';
+      scopes.forEach(function(c){ h+='<div class="mode'+(scope===c[0]?' on':'')+'" data-action="rank:scope" data-sc="'+c[0]+'">'+c[1]+'</div>'; });
+      h+='</div><div class="sorts">';
+      [["pj","Partidos"],["g","Victorias"],["p","Derrotas"],["prom","Promedio"],["plata","Plata"]].forEach(function(c){
+        h+='<div class="chip'+(key===c[0]?' on':'')+'" data-action="rank:sort" data-k="'+c[0]+'">'+c[1]+'</div>'; });
       h+='</div>';
       h+='<div class="rk-head"><div class="rk-name"><span class="pos">#</span><span>Jugador</span></div>'+
          '<div class="stat'+(key==="pj"?" on":"")+'">PJ</div><div class="stat'+(key==="g"?" on":"")+'">G</div>'+
-         '<div class="stat'+(key==="p"?" on":"")+'">P</div><div class="stat'+(key==="prom"?" on":"")+'">%</div></div>';
-      sorted.forEach(function(p,i){
-        h+='<div class="rk-row"><div class="rk-name"><span class="pos">'+(i+1)+'</span><span class="full2">'+fullname(p)+'</span></div>'+
+         '<div class="stat'+(key==="p"?" on":"")+'">P</div><div class="stat'+(key==="prom"?" on":"")+'">%</div>'+
+         '<div class="stat money'+(key==="plata"?" on":"")+'">$</div></div>';
+      if(rows.length===0){
+        h+='<div class="rk-empty">Sin partidos en esta categoría todavía.</div>';
+      } else rows.forEach(function(p,i){
+        var promTxt=p.pj?Math.round(p.g/p.pj*100)+"%":"—";
+        var pcls=p.plata>0?" pos":(p.plata<0?" neg":"");
+        h+='<div class="rk-row"><div class="rk-name"><span class="pos">'+(i+1)+'</span><span class="full2">'+p.name+'</span></div>'+
           '<div class="stat'+(key==="pj"?" on":"")+'">'+p.pj+'</div>'+
           '<div class="stat'+(key==="g"?" on":"")+'">'+p.g+'</div>'+
           '<div class="stat'+(key==="p"?" on":"")+'">'+(p.pj-p.g)+'</div>'+
-          '<div class="stat'+(key==="prom"?" on":"")+'">'+prom(p)+'</div></div>';
+          '<div class="stat'+(key==="prom"?" on":"")+'">'+promTxt+'</div>'+
+          '<div class="stat money'+pcls+'">'+plataCorta(p.plata)+'</div></div>';
       });
       h+='</div>';
       view.innerHTML=h;
@@ -361,7 +435,7 @@
     var sc=$("#scrim"), q=state.search.trim().toLowerCase();
     var taken=chosenIds();
     var rset=null;
-    if(state.setup.torneo){ rset={}; rosterNames(state.setup.torneo).forEach(function(n){ rset[n]=1; }); }
+    if(state.setup.torneo && state.setup.torneo!=="Mix"){ rset={}; rosterNames(state.setup.torneo).forEach(function(n){ rset[n]=1; }); }
     var list=state.players.filter(function(p){
       if(rset && !rset[p.nombre+" "+p.apellido]) return false;
       return !q || fullname(p).toLowerCase().indexOf(q)>=0;
@@ -386,10 +460,14 @@
   }
   function closeScrim(){ var sc=$("#scrim"); sc.classList.remove("show"); state.sheet=null; setTimeout(function(){ if(!sc.classList.contains("show")) sc.innerHTML=""; },60); }
 
+  function montoPartida(g,w){ var esDoble=g.score[1-w]<15; return {esDoble:esDoble, monto:esDoble?g.apuesta.doble:g.apuesta.simple}; }
   function winnerModal(w){
     var g=state.active;
     var names=g.teams[w].map(function(id){return player(id).nombre;}).join(", ");
     var sc=$("#scrim");
+    var mp=montoPartida(g,w);
+    var montoLine='<p style="margin:0 0 14px;font-size:15px;color:'+(mp.esDoble?"#7ec47e":"#e7d6a8")+'">'+
+      (mp.esDoble?"¡Ganaron en las malas! Se cobra <b>doble</b>: ":"Se cobra: ")+'<b>'+pesos(mp.monto)+'</b> por persona</p>';
     var err = state.errorMsg ? '<p style="color:#e8b34a">'+state.errorMsg+'</p>' : '';
     var btns = state.guardando
       ? '<button class="primary" disabled style="opacity:.6;width:100%">Guardando…</button>'
@@ -397,21 +475,25 @@
         '<button class="primary" data-action="finalize" data-w="'+w+'">Guardar partida</button></div>';
     sc.innerHTML='<div class="modal"><div class="trophy">'+ic("trophy",42)+'</div>'+
       '<h2>¡Ganó '+(w===0?"Nos":"Ellos")+'!</h2>'+
-      '<p>'+names+'<br>+1 victoria para cada uno</p>'+err+btns+'</div>';
+      '<p style="margin:6px 0 6px">'+names+'<br>+1 victoria para cada uno</p>'+montoLine+err+btns+'</div>';
     sc.classList.add("show");
   }
 
   /* ---------- acciones ---------- */
   function finalize(w){
-    var g=state.active;
+    var g=state.active, mp=montoPartida(g,w);
     function pp(id){ var p=player(id); return p.nuevo ? {nombre:p.nombre,apellido:p.apellido} : {id:p.id,nombre:p.nombre,apellido:p.apellido}; }
     var payload={ action:"guardar_partida", torneo:g.torneo||"", modo:g.modo+"v"+g.modo, ganador:w+1,
       puntos:g.score[0]+"-"+g.score[1],
+      apuesta_simple:g.apuesta.simple, apuesta_doble:g.apuesta.doble, monto:mp.monto,
       equipos:{ 1:g.teams[0].map(pp), 2:g.teams[1].map(pp) } };
+    var tor=g.torneo;
     state.guardando=true; state.errorMsg=""; winnerModal(w);
     apiPost(payload).then(function(d){
       state.guardando=false;
-      if(d&&d.ok){ state.players=mapJug(d.jugadores); state.active=null; closeScrim(); state.view="ranking"; render(); }
+      if(d&&d.ok){ state.players=mapJug(d.jugadores); if(d.partidas) state.partidas=d.partidas;
+        state.active=null; closeScrim();
+        state.rankScope=(tor==="Famosa"||tor==="Telaso")?tor:"global"; state.view="ranking"; render(); }
       else { state.errorMsg=(d&&d.error)?("Error: "+d.error):"No se pudo guardar"; winnerModal(w); }
     }).catch(function(){ state.guardando=false; state.errorMsg="Sin conexión — no se guardó"; winnerModal(w); });
   }
@@ -423,10 +505,10 @@
     if(a==="scrim:close") return closeScrim();
     if(a==="nav:anotador"){ closeScrim(); state.view="anotador"; return render(); }
     if(a==="nav:ranking"){ closeScrim(); state.view="ranking"; return render(); }
-    if(a==="nav:nueva"){ state.setup={modo:3,teams:[[null,null,null],[null,null,null]]}; state.view="nueva"; return render(); }
-    if(a==="torneo"){ state.setup.torneo=t.getAttribute("data-tn"); cargarRoster(state.setup.torneo);
-      var mm=state.setup.modo; state.setup.teams=[[],[]];
-      for(var k=0;k<mm;k++){state.setup.teams[0].push(null); state.setup.teams[1].push(null);} return render(); }
+    if(a==="nav:nueva"){ state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; state.view="nueva"; return render(); }
+    if(a==="apuesta"){ var pr=t.getAttribute("data-preset"); state.setup.apuesta.preset=pr;
+      if(pr!=="custom"){ state.setup.apuesta.simple=+t.getAttribute("data-s"); state.setup.apuesta.doble=+t.getAttribute("data-d"); }
+      return render(); }
     if(a==="mode"){ var m=+t.getAttribute("data-m"); state.setup.modo=m; state.setup.teams=[[],[]];
       for(var i=0;i<m;i++){state.setup.teams[0].push(null); state.setup.teams[1].push(null);} return render(); }
     if(a==="slot:open"){ return openSheet(+t.getAttribute("data-t"), +t.getAttribute("data-s")); }
@@ -435,14 +517,25 @@
     if(a==="sheet:create"){ var parts=state.search.trim().split(/\s+/); var nom=parts.shift()||"Jugador"; var ape=parts.join(" ");
       var np={id:"tmp"+(state.nextId++), nombre:nom, apellido:ape, pj:0, g:0, nuevo:true}; state.players.push(np);
       state.setup.teams[state.sheet.t][state.sheet.s]=np.id; closeScrim(); return render(); }
-    if(a==="start"){ state.active={torneo:state.setup.torneo, modo:state.setup.modo, teams:[state.setup.teams[0].slice(),state.setup.teams[1].slice()], score:[0,0]}; state.view="anotador"; return render(); }
+    if(a==="start"){ var ap=state.setup.apuesta; state.active={torneo:state.setup.torneo, modo:state.setup.modo, teams:[state.setup.teams[0].slice(),state.setup.teams[1].slice()], score:[0,0], apuesta:{simple:ap.simple, doble:ap.doble}}; state.view="anotador"; return render(); }
     if(a==="plus"||a==="minus"){ var ti=+t.getAttribute("data-t"); var d=a==="plus"?1:-1;
       var g=state.active; g.score[ti]=Math.max(0,Math.min(LIMIT,g.score[ti]+d)); render();
       if(g.score[ti]>=LIMIT) winnerModal(ti); return; }
     if(a==="discard"){ state.active=null; closeScrim(); state.view="anotador"; return render(); }
     if(a==="finalize"){ return finalize(+t.getAttribute("data-w")); }
     if(a==="rank:sort"){ state.rankSort=t.getAttribute("data-k"); return render(); }
+    if(a==="rank:scope"){ state.rankScope=t.getAttribute("data-sc"); return render(); }
     if(a==="reload"){ return cargar(); }
+  });
+  document.addEventListener("change",function(e){
+    var s=e.target.closest("[data-change]"); if(!s) return;
+    if(s.getAttribute("data-change")==="torneo"){
+      var tn=s.value||null; state.setup.torneo=tn;
+      if(tn) cargarRoster(tn);
+      var mm=state.setup.modo; state.setup.teams=[[],[]];
+      for(var k=0;k<mm;k++){state.setup.teams[0].push(null); state.setup.teams[1].push(null);}
+      return render();
+    }
   });
   $("#scrim").addEventListener("click",function(e){ if(e.target===this) closeScrim(); });
 
