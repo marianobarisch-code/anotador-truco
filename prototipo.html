@@ -171,23 +171,21 @@
     trophy:'<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1 -10 0zM7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 0 -3 3"/>'
   };
   function ic(n,sz){ sz=sz||22; return '<svg class="icn" viewBox="0 0 24 24" width="'+sz+'" height="'+sz+'" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+ICON[n]+'</svg>'; }
+  var API_URL="https://script.google.com/macros/s/AKfycbxG82ZhM4mRR5a-UXmzy-3-f6VEYGfTgTnK2_Dz2qW5BX6vnudykW9b7A9s8VQgXjN0iA/exec";
+  var API_TOKEN="truco-barisch-7H2k9";
+
   var state={
     view:"anotador",
-    players:[
-      {id:1,nombre:"Mariano",apellido:"Barisch",pj:12,g:8},
-      {id:2,nombre:"Lucía",apellido:"Fernández",pj:11,g:7},
-      {id:3,nombre:"Sofía",apellido:"Díaz",pj:9,g:6},
-      {id:4,nombre:"Juan",apellido:"Pérez",pj:10,g:5},
-      {id:5,nombre:"Pedro",apellido:"Ruiz",pj:6,g:3},
-      {id:6,nombre:"Marcos",apellido:"Tucci",pj:7,g:2}
-    ],
-    nextId:7,
-    games:[],
+    players:[],
+    nextId:1,
     active:null,
     setup:{modo:3, teams:[[null,null,null],[null,null,null]]},
     rankSort:"g",
     sheet:null,
-    search:""
+    search:"",
+    cargando:true,
+    errorMsg:"",
+    guardando:false
   };
 
   /* ---------- helpers ---------- */
@@ -201,6 +199,19 @@
   function fullname(p){ return p.nombre+" "+p.apellido; }
   function prom(p){ return p.pj? Math.round(p.g/p.pj*100)+"%":"—"; }
   function chosenIds(){ var a=[]; state.setup.teams.forEach(function(t){t.forEach(function(id){if(id)a.push(id);});}); return a; }
+
+  /* ---------- API (Google Sheets) ---------- */
+  function mapJug(arr){ return (arr||[]).map(function(j){ return {id:j.id_jugador, nombre:j.nombre, apellido:j.apellido, pj:Number(j.jugados)||0, g:Number(j.ganados)||0}; }); }
+  function apiGet(){ return fetch(API_URL+"?token="+encodeURIComponent(API_TOKEN)+"&_="+Date.now()).then(function(r){return r.json();}); }
+  function apiPost(p){ p.token=API_TOKEN; return fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(p)}).then(function(r){return r.json();}); }
+  function cargar(){
+    state.cargando=true; state.errorMsg=""; render();
+    apiGet().then(function(d){
+      if(d&&d.ok){ state.players=mapJug(d.jugadores); state.errorMsg=""; }
+      else { state.errorMsg="No se pudo leer la base"; }
+      state.cargando=false; render();
+    }).catch(function(){ state.cargando=false; state.errorMsg="Sin conexión con la base"; render(); });
+  }
 
   /* ---------- fósforos ---------- */
   function squareSVG(n){
@@ -224,10 +235,18 @@
       title.textContent="Anotador";
       if(!state.active){
         hr.style.visibility="hidden";
-        view.innerHTML='<div class="empty">'+
-          '<div class="ic">'+ic("cards",38)+'</div>'+
-          '<p>No hay partida en curso.<br>Iniciá una nueva para empezar a anotar.</p>'+
-          '<button class="primary" data-action="nav:nueva">Iniciar partida</button></div>';
+        var inner;
+        if(state.cargando){
+          inner='<div class="ic">'+ic("cards",38)+'</div><p>Cargando jugadores…</p>';
+        } else if(state.errorMsg){
+          inner='<div class="ic">'+ic("cards",38)+'</div><p style="color:#e8b34a">'+state.errorMsg+'</p>'+
+            '<button class="ghost" data-action="reload">Reintentar</button>';
+        } else {
+          inner='<div class="ic">'+ic("cards",38)+'</div>'+
+            '<p>No hay partida en curso.<br>Iniciá una nueva para empezar a anotar.</p>'+
+            '<button class="primary" data-action="nav:nueva">Iniciar partida</button>';
+        }
+        view.innerHTML='<div class="empty">'+inner+'</div>';
       }else{
         hr.innerHTML=ic("trash",20); hr.setAttribute("data-action","discard");
         var g=state.active;
@@ -347,21 +366,30 @@
     var g=state.active;
     var names=g.teams[w].map(function(id){return player(id).nombre;}).join(", ");
     var sc=$("#scrim");
+    var err = state.errorMsg ? '<p style="color:#e8b34a">'+state.errorMsg+'</p>' : '';
+    var btns = state.guardando
+      ? '<button class="primary" disabled style="opacity:.6;width:100%">Guardando…</button>'
+      : '<div class="row"><button class="ghost danger" data-action="discard">Descartar</button>'+
+        '<button class="primary" data-action="finalize" data-w="'+w+'">Guardar partida</button></div>';
     sc.innerHTML='<div class="modal"><div class="trophy">'+ic("trophy",42)+'</div>'+
       '<h2>¡Ganó '+(w===0?"Nos":"Ellos")+'!</h2>'+
-      '<p>'+names+'<br>+1 victoria para cada uno</p>'+
-      '<div class="row"><button class="ghost danger" data-action="discard">Descartar</button>'+
-      '<button class="primary" data-action="finalize" data-w="'+w+'">Guardar partida</button></div></div>';
+      '<p>'+names+'<br>+1 victoria para cada uno</p>'+err+btns+'</div>';
     sc.classList.add("show");
   }
 
   /* ---------- acciones ---------- */
   function finalize(w){
-    var g=state.active, l=1-w;
-    g.teams[w].forEach(function(id){ var p=player(id); p.pj++; p.g++; });
-    g.teams[l].forEach(function(id){ var p=player(id); p.pj++; });
-    state.games.push({id:"P"+(state.games.length+1)+"-"+Date.now(), modo:g.modo, ganador:w, score:g.score.slice()});
-    state.active=null; closeScrim(); state.view="ranking"; render();
+    var g=state.active;
+    function pp(id){ var p=player(id); return p.nuevo ? {nombre:p.nombre,apellido:p.apellido} : {id:p.id,nombre:p.nombre,apellido:p.apellido}; }
+    var payload={ action:"guardar_partida", modo:g.modo+"v"+g.modo, ganador:w+1,
+      puntos:g.score[0]+"-"+g.score[1],
+      equipos:{ 1:g.teams[0].map(pp), 2:g.teams[1].map(pp) } };
+    state.guardando=true; state.errorMsg=""; winnerModal(w);
+    apiPost(payload).then(function(d){
+      state.guardando=false;
+      if(d&&d.ok){ state.players=mapJug(d.jugadores); state.active=null; closeScrim(); state.view="ranking"; render(); }
+      else { state.errorMsg=(d&&d.error)?("Error: "+d.error):"No se pudo guardar"; winnerModal(w); }
+    }).catch(function(){ state.guardando=false; state.errorMsg="Sin conexión — no se guardó"; winnerModal(w); });
   }
 
   document.addEventListener("click",function(e){
@@ -376,9 +404,9 @@
       for(var i=0;i<m;i++){state.setup.teams[0].push(null); state.setup.teams[1].push(null);} return render(); }
     if(a==="slot:open"){ return openSheet(+t.getAttribute("data-t"), +t.getAttribute("data-s")); }
     if(a==="slot:clear"){ state.setup.teams[+t.getAttribute("data-t")][+t.getAttribute("data-s")]=null; return render(); }
-    if(a==="sheet:pick"){ state.setup.teams[state.sheet.t][state.sheet.s]=+t.getAttribute("data-id"); closeScrim(); return render(); }
+    if(a==="sheet:pick"){ state.setup.teams[state.sheet.t][state.sheet.s]=t.getAttribute("data-id"); closeScrim(); return render(); }
     if(a==="sheet:create"){ var parts=state.search.trim().split(/\s+/); var nom=parts.shift()||"Jugador"; var ape=parts.join(" ");
-      var np={id:state.nextId++, nombre:nom, apellido:ape, pj:0, g:0}; state.players.push(np);
+      var np={id:"tmp"+(state.nextId++), nombre:nom, apellido:ape, pj:0, g:0, nuevo:true}; state.players.push(np);
       state.setup.teams[state.sheet.t][state.sheet.s]=np.id; closeScrim(); return render(); }
     if(a==="start"){ state.active={modo:state.setup.modo, teams:[state.setup.teams[0].slice(),state.setup.teams[1].slice()], score:[0,0]}; state.view="anotador"; return render(); }
     if(a==="plus"||a==="minus"){ var ti=+t.getAttribute("data-t"); var d=a==="plus"?1:-1;
@@ -387,10 +415,11 @@
     if(a==="discard"){ state.active=null; closeScrim(); state.view="anotador"; return render(); }
     if(a==="finalize"){ return finalize(+t.getAttribute("data-w")); }
     if(a==="rank:sort"){ state.rankSort=t.getAttribute("data-k"); return render(); }
+    if(a==="reload"){ return cargar(); }
   });
   $("#scrim").addEventListener("click",function(e){ if(e.target===this) closeScrim(); });
 
-  render();
+  cargar();
 })();
 </script>
 </body>
