@@ -484,7 +484,7 @@
     var g=state.active, mp=montoPartida(g,w);
     function pp(id){ var p=player(id); return p.nuevo ? {nombre:p.nombre,apellido:p.apellido} : {id:p.id,nombre:p.nombre,apellido:p.apellido}; }
     var payload={ action:"guardar_partida", torneo:g.torneo||"", modo:g.modo+"v"+g.modo, ganador:w+1,
-      puntos:g.score[0]+"-"+g.score[1],
+      puntos:g.score[0]+" a "+g.score[1],
       apuesta_simple:g.apuesta.simple, apuesta_doble:g.apuesta.doble, monto:mp.monto,
       equipos:{ 1:g.teams[0].map(pp), 2:g.teams[1].map(pp) } };
     var tor=g.torneo;
