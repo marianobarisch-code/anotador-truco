@@ -179,7 +179,7 @@
     players:[],
     nextId:1,
     active:null,
-    setup:{modo:3, teams:[[null,null,null],[null,null,null]]},
+    setup:{torneo:null, modo:3, teams:[[null,null,null],[null,null,null]]},
     rankSort:"g",
     sheet:null,
     search:"",
@@ -211,6 +211,23 @@
       else { state.errorMsg="No se pudo leer la base"; }
       state.cargando=false; render();
     }).catch(function(){ state.cargando=false; state.errorMsg="Sin conexión con la base"; render(); });
+  }
+
+  /* ---------- Torneos (rosters precargados) ---------- */
+  var TORNEOS={
+    Telaso:["Mariano Barisch","Guido Jude","Tomi Couriel","Marto Fridman","Tochu Wilhelm","Lucas Doberti","Bran Serebriani","Sebo Hochbaum","Toto Leker","Bata Burst"],
+    Famosa:["Mariano Barisch","Guido Jude","Maro Faiman","Luki Gamar","Rifle Alfie","Tano Scolnik","Diego Kestel","Garo Getjman","Maxi Abuaf","Toto Leker","Fede Levin","Alu Fainsod","Ari Bolto","Alan Kronik","Nana Zylber","Sega Schor"]
+  };
+  function rosterNames(tn){
+    if(tn==="Mix"){ var s=TORNEOS.Telaso.concat(TORNEOS.Famosa), seen={}, out=[]; s.forEach(function(n){ if(!seen[n]){ seen[n]=1; out.push(n); } }); return out; }
+    return TORNEOS[tn]||[];
+  }
+  function cargarRoster(tn){
+    rosterNames(tn).forEach(function(full){
+      var i=full.indexOf(" "); var nom=i<0?full:full.slice(0,i); var ape=i<0?"":full.slice(i+1);
+      var ex=state.players.some(function(p){ return p.nombre===nom && p.apellido===ape; });
+      if(!ex){ state.players.push({id:"tmp"+(state.nextId++), nombre:nom, apellido:ape, pj:0, g:0, nuevo:true}); }
+    });
   }
 
   /* ---------- fósforos ---------- */
@@ -270,8 +287,10 @@
 
     else if(v==="nueva"){
       title.textContent="Nueva partida"; hr.style.visibility="hidden";
-      var m=state.setup.modo, slots=m;
+      var m=state.setup.modo, slots=m, tor=state.setup.torneo;
       var html='<div class="scroll">'+
+        '<div class="label">Torneo</div><div class="modes">'+
+        ['Telaso','Famosa','Mix'].map(function(tn){ return '<div class="mode'+(tor===tn?' on':'')+'" data-action="torneo" data-tn="'+tn+'">'+tn+'</div>'; }).join('')+'</div>'+
         '<div class="label">Modo de juego</div><div class="modes">'+
         '<div class="mode'+(m===2?' on':'')+'" data-action="mode" data-m="2">2 vs 2</div>'+
         '<div class="mode'+(m===3?' on':'')+'" data-action="mode" data-m="3">3 vs 3</div></div>';
@@ -289,7 +308,7 @@
       });
       html+='</div>';
       view.innerHTML=html;
-      var done=chosenIds().length===slots*2;
+      var done=tor && chosenIds().length===slots*2;
       bar.className="actions";
       bar.innerHTML='<button class="ghost" data-action="nav:anotador">Cancelar</button>'+
         '<button class="primary full" '+(done?'':'style="opacity:.4"')+' data-action="'+(done?'start':'noop')+'">Iniciar partida</button>';
@@ -341,7 +360,12 @@
   function renderSheet(){
     var sc=$("#scrim"), q=state.search.trim().toLowerCase();
     var taken=chosenIds();
-    var list=state.players.filter(function(p){ return !q || fullname(p).toLowerCase().indexOf(q)>=0; });
+    var rset=null;
+    if(state.setup.torneo){ rset={}; rosterNames(state.setup.torneo).forEach(function(n){ rset[n]=1; }); }
+    var list=state.players.filter(function(p){
+      if(rset && !rset[p.nombre+" "+p.apellido]) return false;
+      return !q || fullname(p).toLowerCase().indexOf(q)>=0;
+    });
     var items='';
     list.forEach(function(p){
       var dis=taken.indexOf(p.id)>=0;
@@ -381,7 +405,7 @@
   function finalize(w){
     var g=state.active;
     function pp(id){ var p=player(id); return p.nuevo ? {nombre:p.nombre,apellido:p.apellido} : {id:p.id,nombre:p.nombre,apellido:p.apellido}; }
-    var payload={ action:"guardar_partida", modo:g.modo+"v"+g.modo, ganador:w+1,
+    var payload={ action:"guardar_partida", torneo:g.torneo||"", modo:g.modo+"v"+g.modo, ganador:w+1,
       puntos:g.score[0]+"-"+g.score[1],
       equipos:{ 1:g.teams[0].map(pp), 2:g.teams[1].map(pp) } };
     state.guardando=true; state.errorMsg=""; winnerModal(w);
@@ -400,6 +424,9 @@
     if(a==="nav:anotador"){ closeScrim(); state.view="anotador"; return render(); }
     if(a==="nav:ranking"){ closeScrim(); state.view="ranking"; return render(); }
     if(a==="nav:nueva"){ state.setup={modo:3,teams:[[null,null,null],[null,null,null]]}; state.view="nueva"; return render(); }
+    if(a==="torneo"){ state.setup.torneo=t.getAttribute("data-tn"); cargarRoster(state.setup.torneo);
+      var mm=state.setup.modo; state.setup.teams=[[],[]];
+      for(var k=0;k<mm;k++){state.setup.teams[0].push(null); state.setup.teams[1].push(null);} return render(); }
     if(a==="mode"){ var m=+t.getAttribute("data-m"); state.setup.modo=m; state.setup.teams=[[],[]];
       for(var i=0;i<m;i++){state.setup.teams[0].push(null); state.setup.teams[1].push(null);} return render(); }
     if(a==="slot:open"){ return openSheet(+t.getAttribute("data-t"), +t.getAttribute("data-s")); }
@@ -408,7 +435,7 @@
     if(a==="sheet:create"){ var parts=state.search.trim().split(/\s+/); var nom=parts.shift()||"Jugador"; var ape=parts.join(" ");
       var np={id:"tmp"+(state.nextId++), nombre:nom, apellido:ape, pj:0, g:0, nuevo:true}; state.players.push(np);
       state.setup.teams[state.sheet.t][state.sheet.s]=np.id; closeScrim(); return render(); }
-    if(a==="start"){ state.active={modo:state.setup.modo, teams:[state.setup.teams[0].slice(),state.setup.teams[1].slice()], score:[0,0]}; state.view="anotador"; return render(); }
+    if(a==="start"){ state.active={torneo:state.setup.torneo, modo:state.setup.modo, teams:[state.setup.teams[0].slice(),state.setup.teams[1].slice()], score:[0,0]}; state.view="anotador"; return render(); }
     if(a==="plus"||a==="minus"){ var ti=+t.getAttribute("data-t"); var d=a==="plus"?1:-1;
       var g=state.active; g.score[ti]=Math.max(0,Math.min(LIMIT,g.score[ti]+d)); render();
       if(g.score[ti]>=LIMIT) winnerModal(ti); return; }
