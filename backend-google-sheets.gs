@@ -136,3 +136,12 @@ function leerTabla_(name) {
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
+
+/* === Borra TODOS los datos (deja solo encabezados). Correr desde el editor. === */
+function _reset() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  [T_JUG, T_PAR, T_DET].forEach(function (n) {
+    var sh = ss.getSheetByName(n); var last = sh.getLastRow();
+    if (last > 1) sh.deleteRows(2, last - 1);
+  });
+}
