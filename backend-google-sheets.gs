@@ -20,7 +20,7 @@ const T_PAR = 'partidas';
 const T_DET = 'partidas_jugadores';
 
 const H_JUG = ['id_jugador','nombre','apellido','jugados','ganados','perdidos','puntos','promedio','fecha_alta'];
-const H_PAR = ['id_partida','fecha','torneo','modo','equipo_1','equipo_2','ganador','puntos','apuesta_simple','apuesta_doble','monto'];
+const H_PAR = ['id_partida','fecha','torneo','modo','equipo_1','equipo_2','ganador','puntos','apuesta_simple','apuesta_doble','monto','jornada'];
 const H_DET = ['id_partida','id_jugador','equipo','resultado'];
 
 /* === Crea las pestañas con sus títulos (ejecutar una vez) === */
@@ -78,7 +78,7 @@ function guardarPartida_(body) {
   shP.appendRow([
     idPartida, new Date(), body.torneo || '', body.modo || '',
     eq[1].join(','), eq[2].join(','), 'Equipo ' + body.ganador, body.puntos || '',
-    body.apuesta_simple || '', body.apuesta_doble || '', body.monto || ''
+    body.apuesta_simple || '', body.apuesta_doble || '', body.monto || '', body.jornada || ''
   ]);
 
   // 3) Detalle por jugador + actualizar métricas (victorias, NO plata)

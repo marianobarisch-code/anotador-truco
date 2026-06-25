@@ -57,6 +57,12 @@
   .empty{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:24px; text-align:center; }
   .empty .ic{ width:80px; height:80px; border-radius:50%; border:2px solid var(--gold-soft); display:flex; align-items:center; justify-content:center; color:var(--gold-soft); font-size:38px; }
   .empty p{ color:#cdbf9a; font-size:15px; margin:0; }
+  .estack{ width:100%; max-width:300px; display:flex; flex-direction:column; gap:12px; }
+  .jbanner{ display:flex; align-items:center; gap:11px; padding:13px 15px; border-radius:12px; border:1px solid var(--gold-soft); background:rgba(216,181,62,0.1); text-align:left; }
+  .jdot{ width:10px; height:10px; border-radius:50%; background:#7ec47e; box-shadow:0 0 8px #7ec47e; flex:0 0 auto; }
+  .jbtxt{ display:flex; flex-direction:column; min-width:0; }
+  .jbtxt b{ color:#f0e2b6; font-size:15px; font-weight:600; }
+  .jbtxt span{ color:#cdbf9a; font-size:12px; }
 
   .primary{ background:var(--gold); color:var(--ink); border:none; border-radius:12px; padding:15px 28px; font-size:17px; font-weight:600; }
   .primary:active{ transform:scale(.98); }
@@ -108,7 +114,30 @@
   .stat.money{ width:56px; font-size:13px; }
   .stat.pos{ color:#7ec47e; } .stat.neg{ color:#e08b80; }
   .rk-head .stat{ font-size:12px; color:#9c8a63; }
-  .rk-empty{ text-align:center; color:#9c8a63; font-size:14px; padding:34px 16px; }
+  .rk-empty{ text-align:center; color:#9c8a63; font-size:14px; padding:34px 16px; line-height:1.6; }
+
+  /* ---- Jornadas (sesiones) ---- */
+  .jlist{ display:flex; flex-direction:column; }
+  .jrow{ display:flex; align-items:center; gap:10px; padding:14px 6px; border-bottom:1px solid rgba(176,141,46,0.18); }
+  .jr-main{ flex:1; min-width:0; }
+  .jr-date{ font-size:15px; color:#fff; }
+  .jr-live{ font-size:10px; color:#15100b; background:#7ec47e; border-radius:10px; padding:1px 7px; margin-left:6px; vertical-align:1px; }
+  .jr-sub{ font-size:12px; color:#9c8a63; margin-top:3px; }
+  .jr-tot{ font-size:14px; color:#d8cba0; flex:0 0 auto; }
+  .jr-chev{ color:#6e5024; display:flex; }
+  .jdhead{ padding:6px 2px 12px; border-bottom:1px solid rgba(176,141,46,0.3); margin-bottom:8px; }
+  .jd-date{ font-size:19px; color:var(--gold); font-weight:600; }
+  .jd-sub{ font-size:12px; color:#9c8a63; margin-top:4px; }
+  .sd-list,.pay-list{ display:flex; flex-direction:column; }
+  .sd-row{ display:flex; align-items:center; justify-content:space-between; padding:11px 6px; border-bottom:1px solid rgba(176,141,46,0.16); }
+  .sd-name{ font-size:15px; color:#fff; }
+  .sd-amt{ font-size:15px; font-weight:600; color:#d8cba0; }
+  .sd-amt.pos{ color:#7ec47e; } .sd-amt.neg{ color:#e08b80; }
+  .pay-row{ display:flex; align-items:center; gap:9px; padding:12px 13px; margin-bottom:8px; border:1px solid var(--gold-soft); border-radius:10px; background:rgba(216,181,62,0.08); }
+  .pay-de{ color:#e08b80; font-size:14px; }
+  .pay-arrow{ color:#cdbf9a; display:flex; }
+  .pay-a{ color:#7ec47e; font-size:14px; }
+  .pay-m{ margin-left:auto; color:#f0e2b6; font-weight:600; font-size:15px; }
 
   /* ---- Overlays ---- */
   .scrim{ position:absolute; inset:0; z-index:20; background:rgba(0,0,0,0.55); display:none; }
@@ -187,7 +216,9 @@
     search:'<circle cx="10" cy="10" r="7"/><path d="M21 21l-6 -6"/>',
     user:'<circle cx="12" cy="8" r="4"/><path d="M6 21v-1a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v1"/>',
     plus:'<path d="M12 5v14M5 12h14"/>',
-    trophy:'<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1 -10 0zM7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 0 -3 3"/>'
+    trophy:'<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1 -10 0zM7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 0 -3 3"/>',
+    arrow:'<path d="M5 12h14M13 6l6 6l-6 6"/>',
+    cal:'<rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M3.5 9h17M8 3v4M16 3v4"/>'
   };
   function ic(n,sz){ sz=sz||22; return '<svg class="icn" viewBox="0 0 24 24" width="'+sz+'" height="'+sz+'" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+ICON[n]+'</svg>'; }
   var API_URL="https://script.google.com/macros/s/AKfycbxG82ZhM4mRR5a-UXmzy-3-f6VEYGfTgTnK2_Dz2qW5BX6vnudykW9b7A9s8VQgXjN0iA/exec";
@@ -199,6 +230,8 @@
     partidas:[],
     nextId:1,
     active:null,
+    jornada:null,          // {id, inicio}  — jornada (sesión) abierta
+    jornadaSel:null,       // jid en pantalla de detalle
     setup:{torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom", simple:null, doble:null}},
     rankSort:"g",
     rankScope:"global",
@@ -225,6 +258,85 @@
   function plataCorta(n){ var a=Math.abs(n), s=n<0?"−":(n>0?"+":""), str;     // +$10k / −$2.5k
     if(a>=1000){ var k=a/1000; str=(k%1===0?k:k.toFixed(1).replace(/\.0$/,""))+"k"; } else { str=""+a; }
     return s+"$"+str; }
+  function pesosFirmado(n){ return (n<0?"−":(n>0?"+":""))+"$"+miles(n); }       // +$5.000 / −$5.000
+
+  /* ---------- Jornadas (una sesión = varios partidos de una misma noche) ---------- */
+  var LS_JOR="truco_jornada_v1";
+  // Cierre automático: las 6:00 AM siguientes al inicio (cubre el caso 20:00 → 01:00).
+  function cierre6(inicioMs){ var d=new Date(inicioMs), c=new Date(inicioMs);
+    if(d.getHours()<6){ c.setHours(6,0,0,0); } else { c.setDate(c.getDate()+1); c.setHours(6,0,0,0); }
+    return c.getTime(); }
+  function loadJornada(){
+    try{ var raw=localStorage.getItem(LS_JOR); if(!raw) return null; var j=JSON.parse(raw);
+      if(!j||!j.inicio) return null;
+      if(Date.now()>=cierre6(j.inicio)){ localStorage.removeItem(LS_JOR); return null; } // ya pasó las 6 AM → cerrada sola
+      return j;
+    }catch(e){ return null; } }
+  function saveJornada(j){ try{ if(j) localStorage.setItem(LS_JOR, JSON.stringify(j)); else localStorage.removeItem(LS_JOR); }catch(e){} }
+  function startJornada(){ var now=Date.now(); state.jornada={id:String(now), inicio:now}; saveJornada(state.jornada); }
+  function closeJornada(){ var j=state.jornada; state.jornada=null; saveJornada(null); return j; }
+
+  // Relación partida→jornada en el teléfono (respaldo si el backend aún no guarda la columna).
+  var LS_MAP="truco_jpart_v1";
+  function loadMap(){ try{ return JSON.parse(localStorage.getItem(LS_MAP)||"{}")||{}; }catch(e){ return {}; } }
+  function saveMapEntry(idPartida, jid){ try{ var m=loadMap(); m[String(idPartida)]=String(jid); localStorage.setItem(LS_MAP, JSON.stringify(m)); }catch(e){} }
+  // Jornada de una partida: la del servidor si vino, si no la guardada en el teléfono.
+  function jornadaDeP(pa){ var v=(pa.jornada!=null && pa.jornada!=="")?String(pa.jornada):""; if(v) return v; return loadMap()[String(pa.id_partida)]||""; }
+
+  function hhmm(ms){ var x=new Date(ms); return ("0"+x.getHours()).slice(-2)+":"+("0"+x.getMinutes()).slice(-2); }
+  var DIAS=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"], MESES=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+  function fechaLarga(ms){ var x=new Date(ms); return DIAS[x.getDay()]+" "+x.getDate()+" "+MESES[x.getMonth()]; }
+  function jms(pa){ if(!pa.fecha) return null; var t=new Date(pa.fecha).getTime(); return isNaN(t)?null:t; }
+
+  // Lista de jornadas agrupando partidas por su campo .jornada → [{jid,inicio,fin,n,total,abierta}] desc.
+  function listaJornadas(){
+    var by={};
+    (state.partidas||[]).forEach(function(pa){
+      var jid=jornadaDeP(pa); if(!jid) return;
+      if(!by[jid]) by[jid]={jid:jid, inicio:null, fin:null, n:0, total:0};
+      var g=by[jid]; g.n++; g.total+=Number(pa.monto)||0;
+      var t=jms(pa); if(t!=null){ if(g.inicio==null||t<g.inicio) g.inicio=t; if(g.fin==null||t>g.fin) g.fin=t; }
+    });
+    if(state.jornada && !by[state.jornada.id]) by[state.jornada.id]={jid:state.jornada.id, inicio:state.jornada.inicio, fin:null, n:0, total:0};
+    var arr=Object.keys(by).map(function(k){ var g=by[k];
+      g.abierta=!!(state.jornada && state.jornada.id===g.jid);
+      if(g.inicio==null) g.inicio=Number(g.jid)||0;
+      if(g.fin==null) g.fin=g.inicio;
+      return g; });
+    arr.sort(function(a,b){ return b.inicio-a.inicio; });
+    return arr;
+  }
+  // Saldos netos por persona + a quién le paga cada uno (menos transferencias posibles).
+  function saldosJornada(jid){
+    var by={};
+    function nameOf(id){ var p=player(String(id)); return p?fullname(p):String(id); }
+    function ensure(id){ var nm=nameOf(id); if(!by[nm]) by[nm]={name:nm,plata:0}; return by[nm]; }
+    (state.partidas||[]).forEach(function(pa){
+      if(jornadaDeP(pa)!==String(jid)) return;
+      var e1=String(pa.equipo_1||"").split(",").map(function(s){return s.trim();}).filter(Boolean);
+      var e2=String(pa.equipo_2||"").split(",").map(function(s){return s.trim();}).filter(Boolean);
+      var ganEq=String(pa.ganador).indexOf("2")>=0?2:1, monto=Number(pa.monto)||0;
+      e1.forEach(function(id){ var r=ensure(id); r.plata+=(ganEq===1?monto:-monto); });
+      e2.forEach(function(id){ var r=ensure(id); r.plata+=(ganEq===2?monto:-monto); });
+    });
+    var saldos=Object.keys(by).map(function(k){return by[k];}).sort(function(a,b){return b.plata-a.plata;});
+    return { saldos:saldos, pagos:settle(saldos) };
+  }
+  // Algoritmo de saldado: empareja al que más debe con el que más tiene a favor.
+  function settle(saldos){
+    var deu=[], acr=[];
+    saldos.forEach(function(s){ var v=Math.round(s.plata); if(v<0) deu.push({name:s.name,m:-v}); else if(v>0) acr.push({name:s.name,m:v}); });
+    deu.sort(function(a,b){return b.m-a.m;}); acr.sort(function(a,b){return b.m-a.m;});
+    var pagos=[], i=0, j=0, guard=0;
+    while(i<deu.length && j<acr.length && guard++<999){
+      var pay=Math.min(deu[i].m, acr[j].m);
+      if(pay>0) pagos.push({de:deu[i].name, a:acr[j].name, monto:pay});
+      deu[i].m-=pay; acr[j].m-=pay;
+      if(deu[i].m<=0) i++;
+      if(acr[j].m<=0) j++;
+    }
+    return pagos;
+  }
 
   /* ---------- API (Google Sheets) ---------- */
   function mapJug(arr){ return (arr||[]).map(function(j){ return {id:j.id_jugador, nombre:j.nombre, apellido:j.apellido, pj:Number(j.jugados)||0, g:Number(j.ganados)||0}; }); }
@@ -302,10 +414,21 @@
         } else if(state.errorMsg){
           inner='<div class="ic">'+ic("cards",38)+'</div><p style="color:#e8b34a">'+state.errorMsg+'</p>'+
             '<button class="ghost" data-action="reload">Reintentar</button>';
+        } else if(state.jornada){
+          inner='<div class="ic">'+ic("cards",38)+'</div>'+
+            '<div class="estack">'+
+              '<div class="jbanner"><span class="jdot"></span><div class="jbtxt"><b>Jornada en curso</b>'+
+                '<span>desde las '+hhmm(state.jornada.inicio)+' · cierra sola 6:00 AM</span></div></div>'+
+              '<button class="primary" data-action="nav:nueva">Iniciar partida</button>'+
+              '<button class="ghost" data-action="jornada:close">Cerrar jornada y ver saldos</button>'+
+            '</div>';
         } else {
           inner='<div class="ic">'+ic("cards",38)+'</div>'+
-            '<p>No hay partida en curso.<br>Iniciá una nueva para empezar a anotar.</p>'+
-            '<button class="primary" data-action="nav:nueva">Iniciar partida</button>';
+            '<p>No hay partida en curso.</p>'+
+            '<div class="estack">'+
+              '<button class="primary" data-action="jornada:start">Empezar jornada</button>'+
+              '<button class="ghost" data-action="nav:nueva">Iniciar partida suelta</button>'+
+            '</div>';
         }
         view.innerHTML='<div class="empty">'+inner+'</div>';
       }else{
@@ -414,6 +537,58 @@
       h+='</div>';
       view.innerHTML=h;
     }
+
+    else if(v==="jornadas"){
+      title.textContent="Jornadas"; hr.style.visibility="hidden";
+      var js=listaJornadas();
+      var h='<div class="scroll">';
+      if(js.length===0){
+        h+='<div class="rk-empty">Todavía no hay jornadas.<br>Empezá una desde el inicio para anotar la noche.</div>';
+      } else {
+        h+='<div class="jlist">';
+        js.forEach(function(g){
+          var rango = g.n ? (hhmm(g.inicio)+' – '+hhmm(g.fin)) : ('desde las '+hhmm(g.inicio));
+          h+='<div class="jrow" data-action="jornada:open" data-jid="'+g.jid+'">'+
+               '<div class="jr-main"><div class="jr-date">'+fechaLarga(g.inicio)+(g.abierta?' <span class="jr-live">en curso</span>':'')+'</div>'+
+               '<div class="jr-sub">'+rango+' · '+g.n+' partido'+(g.n===1?'':'s')+'</div></div>'+
+               '<div class="jr-tot">'+(g.total?pesos(g.total):'—')+'</div>'+
+               '<span class="jr-chev">'+ic("chevron",18)+'</span></div>';
+        });
+        h+='</div>';
+      }
+      h+='</div>'; view.innerHTML=h;
+    }
+
+    else if(v==="jornadaDet"){
+      title.textContent="Jornada"; hr.style.visibility="hidden";
+      var jid=state.jornadaSel, data=saldosJornada(jid);
+      var meta=listaJornadas().filter(function(g){return g.jid===String(jid);})[0];
+      var h='<div class="scroll">';
+      if(meta){
+        h+='<div class="jdhead"><div class="jd-date">'+fechaLarga(meta.inicio)+(meta.abierta?' <span class="jr-live">en curso</span>':'')+'</div>'+
+           '<div class="jd-sub">'+(meta.n?hhmm(meta.inicio)+' – '+hhmm(meta.fin):'sin partidos')+' · '+meta.n+' partido'+(meta.n===1?'':'s')+'</div></div>';
+      }
+      h+='<div class="label" style="margin-top:6px">Saldos del día</div>';
+      if(data.saldos.length===0){
+        h+='<div class="rk-empty">Sin partidos en esta jornada todavía.</div>';
+      } else {
+        h+='<div class="sd-list">';
+        data.saldos.forEach(function(s){ var cls=s.plata>0?'pos':(s.plata<0?'neg':'');
+          h+='<div class="sd-row"><span class="sd-name">'+s.name+'</span><span class="sd-amt '+cls+'">'+pesosFirmado(s.plata)+'</span></div>'; });
+        h+='</div>';
+        h+='<div class="label" style="margin-top:18px">Quién le paga a quién</div>';
+        if(data.pagos.length===0){
+          h+='<div class="rk-empty">Está todo saldado, nadie debe nada.</div>';
+        } else {
+          h+='<div class="pay-list">';
+          data.pagos.forEach(function(p){
+            h+='<div class="pay-row"><span class="pay-de">'+p.de+'</span><span class="pay-arrow">'+ic("arrow",16)+'</span>'+
+               '<span class="pay-a">'+p.a+'</span><span class="pay-m">'+pesos(p.monto)+'</span></div>'; });
+          h+='</div>';
+        }
+      }
+      h+='</div>'; view.innerHTML=h;
+    }
   }
 
   /* ---------- overlays ---------- */
@@ -423,6 +598,7 @@
       '<div class="mtitle">Truco</div>'+
       '<div class="mitem" data-action="nav:anotador">'+ic("cards",20)+' Anotador</div>'+
       '<div class="mitem" data-action="nav:ranking">'+ic("trophy",20)+' Ranking</div>'+
+      '<div class="mitem" data-action="nav:jornadas">'+ic("cal",20)+' Jornadas</div>'+
       '<div class="mitem" data-action="scrim:close">'+ic("x",20)+' Cerrar</div></div>';
     sc.classList.add("show");
   }
@@ -486,12 +662,14 @@
     var payload={ action:"guardar_partida", torneo:g.torneo||"", modo:g.modo+"v"+g.modo, ganador:w+1,
       puntos:g.score[0]+" a "+g.score[1],
       apuesta_simple:g.apuesta.simple, apuesta_doble:g.apuesta.doble, monto:mp.monto,
+      jornada: state.jornada ? state.jornada.id : "",
       equipos:{ 1:g.teams[0].map(pp), 2:g.teams[1].map(pp) } };
     var tor=g.torneo;
     state.guardando=true; state.errorMsg=""; winnerModal(w);
     apiPost(payload).then(function(d){
       state.guardando=false;
       if(d&&d.ok){ state.players=mapJug(d.jugadores); if(d.partidas) state.partidas=d.partidas;
+        if(state.jornada && d.id_partida) saveMapEntry(d.id_partida, state.jornada.id);
         state.active=null; closeScrim();
         state.rankScope=(tor==="Famosa"||tor==="Telaso")?tor:"global"; state.view="ranking"; render(); }
       else { state.errorMsg=(d&&d.error)?("Error: "+d.error):"No se pudo guardar"; winnerModal(w); }
@@ -505,6 +683,10 @@
     if(a==="scrim:close") return closeScrim();
     if(a==="nav:anotador"){ closeScrim(); state.view="anotador"; return render(); }
     if(a==="nav:ranking"){ closeScrim(); state.view="ranking"; return render(); }
+    if(a==="nav:jornadas"){ closeScrim(); state.view="jornadas"; return render(); }
+    if(a==="jornada:start"){ startJornada(); return render(); }
+    if(a==="jornada:close"){ var jc=closeJornada(); state.jornadaSel=jc?jc.id:null; state.view=jc?"jornadaDet":"anotador"; return render(); }
+    if(a==="jornada:open"){ state.jornadaSel=t.getAttribute("data-jid"); state.view="jornadaDet"; return render(); }
     if(a==="nav:nueva"){ state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; state.view="nueva"; return render(); }
     if(a==="apuesta"){ var pr=t.getAttribute("data-preset"); state.setup.apuesta.preset=pr;
       if(pr!=="custom"){ state.setup.apuesta.simple=+t.getAttribute("data-s"); state.setup.apuesta.doble=+t.getAttribute("data-d"); }
@@ -539,6 +721,7 @@
   });
   $("#scrim").addEventListener("click",function(e){ if(e.target===this) closeScrim(); });
 
+  state.jornada=loadJornada();   // restaura la jornada abierta (o null si ya pasó las 6 AM)
   cargar();
 })();
 </script>
