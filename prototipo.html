@@ -46,13 +46,13 @@
   .board{ position:absolute; left:0; right:0; top:104px; bottom:8px; }
   .vline{ position:absolute; left:50%; top:0; bottom:0; width:1.5px; background:var(--line); transform:translateX(-50%); }
   .hline{ position:absolute; left:62px; right:62px; top:50%; height:1.5px; background:var(--line); transform:translateY(-50%); }
-  .col{ position:absolute; width:50%; display:flex; flex-direction:column; align-items:center; gap:8px; }
-  /* Fósforos grandes: malas llenan desde abajo de los nombres hasta la cruz; buenas desde la cruz hacia abajo. Simétricos. */
-  .malas{ top:0; height:50%; justify-content:space-between; padding:42px 0 10px; }
-  .buenas{ top:50%; height:50%; justify-content:space-between; padding:10px 0 26px; }
+  .col{ position:absolute; width:50%; display:flex; flex-direction:column; align-items:stretch; }
+  /* 3 slots fijos por mitad, cada uno = 1/3 de la altura. Los cuadrados se achican solos: nunca se apilan en pantallas bajas. */
+  .malas{ top:0; height:50%; padding:30px 0 6px; }
+  .buenas{ top:50%; height:50%; padding:6px 0 20px; }
   .cnos{ left:0; } .cell{ right:0; }
-  .slot-sq{ width:80px; height:80px; display:flex; align-items:center; justify-content:center; }
-  .col svg{ width:80px; height:80px; }
+  .slot-sq{ flex:1 1 0; min-height:0; display:flex; align-items:center; justify-content:center; }
+  .col svg{ height:100%; width:auto; max-height:84px; max-width:84px; }
   .ctrls{ position:absolute; top:50%; transform:translateY(-50%); display:flex; flex-direction:column; gap:18px; z-index:3; }
   .ctrls.l{ left:6px; } .ctrls.r{ right:6px; }
   .rbtn{ width:50px; height:50px; border-radius:50%; border:2.5px solid #fff; background:rgba(0,0,0,0.12); color:#fff; font-size:27px; touch-action:manipulation; }
@@ -427,10 +427,11 @@
 
   /* ---------- fósforos ---------- */
   function squareSVG(n){
-    var a=10,b=50, seg=[[a,a,b,a],[b,a,b,b],[b,b,a,b],[a,b,a,a],[a,b,b,a]], s='<svg viewBox="0 0 60 60">';
+    // Orden de dibujado: arriba → izquierda → derecha → abajo → cruza (como anotador real / Truco Blitz)
+    var a=10,b=50, seg=[[a,a,b,a],[a,b,a,a],[b,a,b,b],[b,b,a,b],[a,b,b,a]], s='<svg viewBox="0 0 60 60">';
     for(var i=0;i<n;i++){var g=seg[i];
-      s+='<line x1="'+g[0]+'" y1="'+g[1]+'" x2="'+g[2]+'" y2="'+g[3]+'" stroke="#ece0c2" stroke-width="5" stroke-linecap="round"/>';
-      s+='<circle cx="'+g[0]+'" cy="'+g[1]+'" r="4.5" fill="#c0392b"/><circle cx="'+g[2]+'" cy="'+g[3]+'" r="4.5" fill="#c0392b"/>';
+      s+='<line x1="'+g[0]+'" y1="'+g[1]+'" x2="'+g[2]+'" y2="'+g[3]+'" stroke="#ece0c2" stroke-width="3" stroke-linecap="round"/>';
+      s+='<circle cx="'+g[0]+'" cy="'+g[1]+'" r="3" fill="#c0392b"/><circle cx="'+g[2]+'" cy="'+g[3]+'" r="3" fill="#c0392b"/>';
     }
     return s+'</svg>';
   }
