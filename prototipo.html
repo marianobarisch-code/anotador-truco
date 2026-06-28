@@ -18,6 +18,8 @@
   html,body{ height:100%; margin:0; overflow:hidden; }
   body{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color:#fff; background:#15100b; user-select:none; -webkit-user-select:none; touch-action:manipulation; }
   button{ font-family:inherit; }
+  /* Todo lo tocable: cursor de mano + sin delay de doble-tap (asegura que el tap dispare bien en iPhone). */
+  [data-action]{ cursor:pointer; touch-action:manipulation; }
 
   /* Marco tamaño celular: centrado, mismo look en compu o teléfono */
   .frame{ position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:100%; height:100%; max-width:430px; max-height:920px; overflow:hidden; box-shadow:0 0 50px rgba(0,0,0,0.55); }
@@ -88,7 +90,7 @@
   .label{ color:#e7d6a8; font-size:13px; margin:0 0 8px 2px; }
   .modes{ display:flex; gap:10px; margin-bottom:18px; }
   .mode{ flex:1; text-align:center; padding:12px 0; border-radius:10px; border:1px solid #6e5024; background:rgba(0,0,0,0.18); color:#cdbf9a; font-size:15px; }
-  .mode.on{ border:2px solid var(--gold); background:rgba(216,181,62,0.12); color:#f0e2b6; font-weight:500; }
+  .mode.on{ border:2px solid var(--gold); background:rgba(216,181,62,0.28); color:#fff; font-weight:600; box-shadow:0 0 0 1px var(--gold) inset; }
   .mode .sub{ display:block; font-size:11px; color:#cdbf9a; margin-top:3px; font-weight:400; }
   /* dropdown torneo */
   .ddwrap{ position:relative; margin-bottom:18px; }
@@ -617,8 +619,10 @@
         return (b.pj?b.g/b.pj:0)-(a.pj?a.g/a.pj:0);
       });
       var scopes=[["global","Global"],["Famosa","Famosa"],["Telaso","Telaso"]];
+      var cnt={global:(state.partidas||[]).length, Famosa:0, Telaso:0};
+      (state.partidas||[]).forEach(function(pa){ if(pa.torneo==="Famosa") cnt.Famosa++; else if(pa.torneo==="Telaso") cnt.Telaso++; });
       var h='<div class="scroll"><div class="modes">';
-      scopes.forEach(function(c){ h+='<div class="mode'+(scope===c[0]?' on':'')+'" data-action="rank:scope" data-sc="'+c[0]+'">'+c[1]+'</div>'; });
+      scopes.forEach(function(c){ var n=cnt[c[0]]; h+='<div class="mode'+(scope===c[0]?' on':'')+'" data-action="rank:scope" data-sc="'+c[0]+'">'+c[1]+'<span class="sub">'+n+(n===1?' partido':' partidos')+'</span></div>'; });
       h+='</div><div class="sorts">';
       [["pj","Partidos"],["g","Victorias"],["p","Derrotas"],["prom","Promedio"],["plata","Plata"]].forEach(function(c){
         h+='<div class="chip'+(key===c[0]?' on':'')+'" data-action="rank:sort" data-k="'+c[0]+'">'+c[1]+'</div>'; });
@@ -628,7 +632,7 @@
          '<div class="stat'+(key==="p"?" on":"")+'">P</div><div class="stat'+(key==="prom"?" on":"")+'">%</div>'+
          '<div class="stat money'+(key==="plata"?" on":"")+'">$</div></div>';
       if(rows.length===0){
-        h+='<div class="rk-empty">Sin partidos en esta categoría todavía.</div>';
+        h+='<div class="rk-empty">Todavía no se jugaron partidos de <b>'+(scope==="global"?"esta categoría":esc(scope))+'</b>.</div>';
       } else rows.forEach(function(p,i){
         var promTxt=p.pj?Math.round(p.g/p.pj*100)+"%":"—";
         var pcls=p.plata>0?" pos":(p.plata<0?" neg":"");
