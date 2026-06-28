@@ -375,20 +375,62 @@
     var saldos=Object.keys(by).map(function(k){return by[k];}).sort(function(a,b){return b.plata-a.plata;});
     return { saldos:saldos, pagos:settle(saldos) };
   }
-  // Algoritmo de saldado: empareja al que más debe con el que más tiene a favor.
+  // Saldado con MÍNIMAS transferencias (mejor que el greedy puro de Splitwise):
+  // separa deudores/acreedores y va extrayendo sub-grupos que se balancean EXACTO
+  // (un grupo de deudores cuya suma iguala a un grupo de acreedores). Así cada persona
+  // o paga o cobra —nunca las dos— y salen menos pagos. Cae a greedy si hay >12 por lado.
   function settle(saldos){
-    var deu=[], acr=[];
-    saldos.forEach(function(s){ var v=Math.round(s.plata); if(v<0) deu.push({name:s.name,m:-v}); else if(v>0) acr.push({name:s.name,m:v}); });
-    deu.sort(function(a,b){return b.m-a.m;}); acr.sort(function(a,b){return b.m-a.m;});
-    var pagos=[], i=0, j=0, guard=0;
-    while(i<deu.length && j<acr.length && guard++<999){
-      var pay=Math.min(deu[i].m, acr[j].m);
-      if(pay>0) pagos.push({de:deu[i].name, a:acr[j].name, monto:pay});
-      deu[i].m-=pay; acr[j].m-=pay;
-      if(deu[i].m<=0) i++;
-      if(acr[j].m<=0) j++;
+    var debt=[], cred=[];
+    saldos.forEach(function(s){ var v=Math.round(s.plata); if(v<0) debt.push({name:s.name,m:-v}); else if(v>0) cred.push({name:s.name,m:v}); });
+    var pagos=[]; settleGrupo(debt, cred, pagos); return pagos;
+  }
+  // Dentro de un grupo balanceado: empareja al que más debe con el que más a favor tiene.
+  function greedyPagar(ds, cs, pagos){
+    ds=ds.slice().sort(function(a,b){return b.m-a.m;}); cs=cs.slice().sort(function(a,b){return b.m-a.m;});
+    var i=0, j=0, g=0;
+    while(i<ds.length && j<cs.length && g++<9999){
+      var pay=Math.min(ds[i].m, cs[j].m);
+      if(pay>0) pagos.push({de:ds[i].name, a:cs[j].name, monto:pay});
+      ds[i].m-=pay; cs[j].m-=pay;
+      if(ds[i].m<=0) i++;
+      if(cs[j].m<=0) j++;
     }
-    return pagos;
+  }
+  function settleGrupo(debt, cred, pagos){
+    if(!debt.length || !cred.length) return;
+    if(debt.length<=12 && cred.length<=12){
+      var grp=subgrupoCero(debt, cred);
+      if(grp){
+        var dIn=[],dOut=[],cIn=[],cOut=[];
+        debt.forEach(function(x,i){ (grp.dMask&(1<<i)?dIn:dOut).push(x); });
+        cred.forEach(function(x,j){ (grp.cMask&(1<<j)?cIn:cOut).push(x); });
+        greedyPagar(dIn, cIn, pagos);   // grupo balanceado
+        settleGrupo(dOut, cOut, pagos); // resto
+        return;
+      }
+    }
+    greedyPagar(debt, cred, pagos);
+  }
+  // Busca el sub-grupo balanceado MÁS CHICO: subconjunto propio de deudores cuya suma
+  // coincide con un subconjunto de acreedores. Devuelve {dMask,cMask} o null si no hay.
+  function subgrupoCero(debt, cred){
+    var nd=debt.length, nc=cred.length, credBy={};
+    for(var cm=1; cm<(1<<nc); cm++){
+      var sum=0, cnt=0;
+      for(var j=0;j<nc;j++) if(cm&(1<<j)){ sum+=cred[j].m; cnt++; }
+      var cur=credBy[sum]; if(!cur || cnt<cur.count) credBy[sum]={mask:cm, count:cnt};
+    }
+    var best=null, bestSize=Infinity;
+    for(var dm=1; dm<(1<<nd); dm++){
+      var ds=0, dc=0;
+      for(var i=0;i<nd;i++) if(dm&(1<<i)){ ds+=debt[i].m; dc++; }
+      var c=credBy[ds];
+      if(c){
+        var size=dc+c.count, proper=!(dc===nd && c.count===nc);
+        if(proper && size<bestSize){ bestSize=size; best={dMask:dm, cMask:c.mask}; }
+      }
+    }
+    return best;
   }
 
   /* ---------- API (Google Sheets) ---------- */
