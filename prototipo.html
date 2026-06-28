@@ -53,6 +53,10 @@
   .cnos{ left:0; } .cell{ right:0; }
   .slot-sq{ flex:1 1 0; min-height:0; display:flex; align-items:center; justify-content:center; }
   .col svg{ height:100%; width:auto; max-height:84px; max-width:84px; }
+  /* Toda la mitad del equipo suma +1 al tocarla (los +/− quedan por encima para corregir). */
+  .tapzone{ position:absolute; top:0; bottom:0; left:0; width:50%; z-index:2; -webkit-tap-highlight-color:transparent; touch-action:manipulation; cursor:pointer; }
+  .tapzone.tz-r{ left:auto; right:0; }
+  .tapzone:active{ background:rgba(255,255,255,0.05); }
   .ctrls{ position:absolute; top:50%; transform:translateY(-50%); display:flex; flex-direction:column; gap:18px; z-index:3; }
   .ctrls.l{ left:6px; } .ctrls.r{ right:6px; }
   .rbtn{ width:50px; height:50px; border-radius:50%; border:2.5px solid #fff; background:rgba(0,0,0,0.12); color:#fff; font-size:27px; touch-action:manipulation; }
@@ -541,6 +545,8 @@
           '<div class="board">'+
             '<div class="score-pill"><span>'+g.score[0]+'</span><span style="color:var(--gold-soft)">·</span><span>'+g.score[1]+'</span></div>'+
             '<div class="vline"></div><div class="hline"></div>'+
+            '<div class="tapzone" data-action="plus" data-t="0" aria-label="Sumar a Nos"></div>'+
+            '<div class="tapzone tz-r" data-action="plus" data-t="1" aria-label="Sumar a Ellos"></div>'+
             '<div class="col cnos malas">'+slotsHTML(Math.min(15,g.score[0]))+'</div>'+
             '<div class="col cnos buenas">'+slotsHTML(Math.max(0,g.score[0]-15))+'</div>'+
             '<div class="col cell malas">'+slotsHTML(Math.min(15,g.score[1]))+'</div>'+
@@ -756,13 +762,16 @@
     var montoLine='<p style="margin:0 0 14px;font-size:15px;color:'+(mp.esDoble?"#7ec47e":"#e7d6a8")+'">'+
       (mp.esDoble?"¡Ganaron en las malas! Se cobra <b>doble</b>: ":"Se cobra: ")+'<b>'+pesos(mp.monto)+'</b> por persona</p>';
     var err = state.errorMsg ? '<p style="color:#e8b34a">'+state.errorMsg+'</p>' : '';
+    var repeatBtn = (!state.guardando && state.jornada)
+      ? '<button class="ghost full" data-action="repeat" data-w="'+w+'" style="margin-top:10px;border-color:var(--gold);color:#f0e2b6">↻ Repetir equipo ganador</button>'
+      : '';
     var btns = state.guardando
       ? '<button class="primary" disabled style="opacity:.6;width:100%">Guardando…</button>'
       : '<div class="row"><button class="ghost danger" data-action="discard">Descartar</button>'+
         '<button class="primary" data-action="finalize" data-w="'+w+'">Guardar partida</button></div>';
     sc.innerHTML='<div class="modal"><div class="trophy">'+ic("trophy",42)+'</div>'+
       '<h2>¡Ganó '+(w===0?"Nos":"Ellos")+'!</h2>'+
-      '<p style="margin:6px 0 6px">'+names+'<br>+1 victoria para cada uno</p>'+montoLine+err+btns+'</div>';
+      '<p style="margin:6px 0 6px">'+names+'<br>+1 victoria para cada uno</p>'+montoLine+err+btns+repeatBtn+'</div>';
     sc.classList.add("show");
   }
 
@@ -784,9 +793,24 @@
   }
 
   /* ---------- acciones ---------- */
-  function finalize(w){
+  // Deja preparada la próxima partida con el equipo ganador ya cargado (el rival se elige de nuevo).
+  function prepareRepeat(winInfo, w, modo, torneo, apuesta){
+    var teams=[[],[]];
+    for(var i=0;i<modo;i++){ teams[0].push(null); teams[1].push(null); }
+    for(var k=0;k<winInfo.length && k<modo;k++){
+      var wi=winInfo[k], key=norm2((wi.nombre+" "+(wi.apellido||"")).trim());
+      var ex=state.players.find(function(p){ return norm2(fullname(p))===key; });
+      teams[w][k]= ex ? ex.id : null;
+    }
+    var preset=(apuesta.simple===5000&&apuesta.doble===10000)?"p5":(apuesta.simple===10000&&apuesta.doble===20000)?"p10":"custom";
+    state.setup={ torneo:torneo, modo:modo, teams:teams, apuesta:{preset:preset, simple:apuesta.simple, doble:apuesta.doble} };
+  }
+  function finalize(w, repeat){
     var g=state.active, mp=montoPartida(g,w);
     function pp(id){ var p=player(id); return p.nuevo ? {nombre:p.nombre,apellido:p.apellido} : {id:p.id,nombre:p.nombre,apellido:p.apellido}; }
+    // capturar nombres del ganador ANTES de guardar (los nuevos cambian de id tmp→real al refrescar)
+    var winInfo=g.teams[w].map(function(id){ var p=player(id); return {nombre:p.nombre, apellido:p.apellido}; });
+    var modo=g.modo, torneo=g.torneo, apuesta={simple:g.apuesta.simple, doble:g.apuesta.doble};
     var payload={ action:"guardar_partida", torneo:g.torneo||"", modo:g.modo+"v"+g.modo, ganador:w+1,
       puntos:g.score[0]+" a "+g.score[1],
       apuesta_simple:g.apuesta.simple, apuesta_doble:g.apuesta.doble, monto:mp.monto,
@@ -799,7 +823,8 @@
       if(d&&d.ok){ state.players=mapJug(d.jugadores); if(d.partidas) state.partidas=d.partidas;
         if(state.jornada && d.id_partida) saveMapEntry(d.id_partida, state.jornada.id);
         state.active=null; closeScrim();
-        state.rankScope=(tor==="Famosa"||tor==="Telaso")?tor:"global"; state.view="ranking"; render(); }
+        if(repeat){ prepareRepeat(winInfo, w, modo, torneo, apuesta); state.view="nueva"; render(); }
+        else { state.rankScope=(tor==="Famosa"||tor==="Telaso")?tor:"global"; state.view="ranking"; render(); } }
       else { state.errorMsg=(d&&d.error)?("Error: "+d.error):"No se pudo guardar"; winnerModal(w); }
     }).catch(function(){ state.guardando=false; state.errorMsg="Sin conexión — no se guardó"; winnerModal(w); });
   }
@@ -839,6 +864,7 @@
       if(g.score[ti]>=LIMIT) winnerModal(ti); return; }
     if(a==="discard"){ state.active=null; closeScrim(); state.view="anotador"; return render(); }
     if(a==="finalize"){ return finalize(+t.getAttribute("data-w")); }
+    if(a==="repeat"){ return finalize(+t.getAttribute("data-w"), true); }
     if(a==="rank:sort"){ state.rankSort=t.getAttribute("data-k"); return render(); }
     if(a==="rank:scope"){ state.rankScope=t.getAttribute("data-sc"); return render(); }
     if(a==="reload"){ return cargar(); }
