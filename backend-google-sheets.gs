@@ -25,7 +25,8 @@ const T_PAR = 'partidas';
 const T_DET = 'partidas_jugadores';
 const T_JOR = 'jornadas';
 
-const H_JUG = ['id_jugador','nombre','apellido','jugados','ganados','perdidos','puntos','promedio','fecha_alta'];
+// etiquetas = torneos a los que pertenece el jugador (ej "Telaso,Famosa"). Una persona = una fila.
+const H_JUG = ['id_jugador','nombre','apellido','jugados','ganados','perdidos','puntos','promedio','fecha_alta','etiquetas'];
 const H_PAR = ['id_partida','fecha','torneo','modo','equipo_1','equipo_2','ganador','puntos','apuesta_simple','apuesta_doble','monto','jornada'];
 const H_DET = ['id_partida','id_jugador','equipo','resultado'];
 const H_JOR = ['id_jornada','inicio','fin','estado'];   // estado: abierta | cerrada
@@ -88,6 +89,8 @@ function doPost(e) {
     switch (body.action) {
       case 'guardar_partida': return json_(guardarPartida_(body));
       case 'borrar_partida':  return json_(borrarPartida_(body));
+      case 'guardar_jugador': return json_(guardarJugador_(body));
+      case 'borrar_jugador':  return json_(borrarJugador_(body));
       case 'abrir_jornada':   return json_(abrirJornada_(body));
       case 'cerrar_jornada':  return json_(cerrarJornada_(body));
       default: return json_({ ok:false, error:'accion desconocida' });
@@ -116,11 +119,13 @@ function guardarPartida_(body) {
   const shP = ss.getSheetByName(T_PAR);
   const shD = ss.getSheetByName(T_DET);
 
-  // 1) Asegurar jugadores (crear los nuevos) y resolver sus IDs
+  // 1) Asegurar jugadores (crear los nuevos) y resolver sus IDs.
+  //    Si el torneo es Telaso/Famosa, el participante queda etiquetado con ese torneo.
+  var torneoLabel = (body.torneo === 'Telaso' || body.torneo === 'Famosa') ? body.torneo : '';
   const eq = { 1: [], 2: [] };
   [1, 2].forEach(function (t) {
     (t === 1 ? e1in : e2in).forEach(function (p) {
-      eq[t].push(asegurarJugador_(shJ, p || {}));
+      eq[t].push(asegurarJugador_(shJ, p || {}, torneoLabel));
     });
   });
 
@@ -175,19 +180,115 @@ function borrarPartida_(body) {
   return { ok:true, id_partida:id, jugadores: leerTabla_(T_JUG), partidas: leerTabla_(T_PAR) };
 }
 
-// Mismo nombre+apellido = misma persona (no duplica jugadores)
-function asegurarJugador_(shJ, p) {
+// Une una etiqueta nueva a la lista existente (sin duplicar, case-insensitive).
+function mergeEtiqueta_(actual, nueva) {
+  nueva = String(nueva == null ? '' : nueva).trim();
+  var arr = String(actual == null ? '' : actual).split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+  if (!nueva) return arr.join(',');
+  var ya = arr.some(function (x) { return x.toLowerCase() === nueva.toLowerCase(); });
+  if (!ya) arr.push(nueva);
+  return arr.join(',');
+}
+
+// Mismo nombre+apellido = misma persona (no duplica jugadores).
+// labelToAdd (opcional): etiqueta de torneo a fusionar (Telaso/Famosa).
+function asegurarJugador_(shJ, p, labelToAdd) {
   const data = shJ.getDataRange().getValues();
+  var col = H_JUG.indexOf('etiquetas');   // índice 0-based de la columna etiquetas
+  var rowIdx = -1;
   if (p.id) {
-    for (var i = 1; i < data.length; i++) if (String(data[i][0]) === String(p.id)) return data[i][0];
+    for (var i = 1; i < data.length; i++) if (String(data[i][0]) === String(p.id)) { rowIdx = i; break; }
   }
-  const nom = norm_(p.nombre), ape = norm_(p.apellido);
-  for (var j = 1; j < data.length; j++) {
-    if (norm_(data[j][1]) === nom && norm_(data[j][2]) === ape) return data[j][0];
+  if (rowIdx < 0) {
+    const nom = norm_(p.nombre), ape = norm_(p.apellido);
+    for (var j = 1; j < data.length; j++) {
+      if (norm_(data[j][1]) === nom && norm_(data[j][2]) === ape) { rowIdx = j; break; }
+    }
+  }
+  if (rowIdx >= 0) {
+    if (labelToAdd) {
+      var merged = mergeEtiqueta_(data[rowIdx][col], labelToAdd);
+      if (merged !== String(data[rowIdx][col] || '')) shJ.getRange(rowIdx + 1, col + 1).setValue(merged);
+    }
+    return data[rowIdx][0];
   }
   const id = nextId_(shJ, 'J');
-  shJ.appendRow([ id, s_(p.nombre, 40), s_(p.apellido, 40), 0, 0, 0, 0, '0%', new Date() ]);
+  shJ.appendRow([ id, s_(p.nombre, 40), s_(p.apellido, 40), 0, 0, 0, 0, '0%', new Date(), s_(labelToAdd || '', 60) ]);
   return id;
+}
+
+/* ---------------- Jugadores (alta / edición / baja desde la app) ---------------- */
+// Alta o edición. Con id => edita (nombre/apellido/etiquetas). Sin id => crea (dedup por nombre).
+function guardarJugador_(body) {
+  var nombre = s_(body.nombre, 40);
+  if (!nombre) return { ok:false, error:'falta nombre' };
+  var apellido = s_(body.apellido, 40);
+  var etiquetas = s_(body.etiquetas, 60);   // ej "Telaso,Famosa"
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  setup();
+  const shJ = ss.getSheetByName(T_JUG);
+  const data = shJ.getDataRange().getValues();
+  var col = H_JUG.indexOf('etiquetas');
+  if (body.id) {
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(body.id)) {
+        shJ.getRange(i + 1, 2, 1, 2).setValues([[ nombre, apellido ]]);   // nombre, apellido
+        shJ.getRange(i + 1, col + 1).setValue(etiquetas);
+        return { ok:true, id_jugador: String(body.id), jugadores: leerTabla_(T_JUG) };
+      }
+    }
+    return { ok:false, error:'jugador no encontrado' };
+  }
+  var nom = norm_(nombre), ape = norm_(apellido);
+  for (var j = 1; j < data.length; j++) {
+    if (norm_(data[j][1]) === nom && norm_(data[j][2]) === ape) {   // ya existe: actualiza etiquetas
+      shJ.getRange(j + 1, col + 1).setValue(etiquetas);
+      return { ok:true, id_jugador: String(data[j][0]), yaExistia:true, jugadores: leerTabla_(T_JUG) };
+    }
+  }
+  var id = nextId_(shJ, 'J');
+  shJ.appendRow([ id, nombre, apellido, 0, 0, 0, 0, '0%', new Date(), etiquetas ]);
+  return { ok:true, id_jugador: id, jugadores: leerTabla_(T_JUG) };
+}
+
+// Baja. Solo se permite si el jugador NO jugó ninguna partida (si jugó, se edita pero no se borra).
+function borrarJugador_(body) {
+  var id = s_(body.id, 24);
+  if (!id) return { ok:false, error:'falta id' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  setup();
+  const shJ = ss.getSheetByName(T_JUG);
+  const shP = ss.getSheetByName(T_PAR);
+  var par = shP.getDataRange().getValues();
+  for (var k = 1; k < par.length; k++) {
+    var ids = (String(par[k][4]) + ',' + String(par[k][5])).split(',').map(function (s) { return s.trim(); });
+    if (ids.indexOf(id) >= 0) return { ok:false, error:'jugo_partidas' };   // tiene historial: no se borra
+  }
+  var data = shJ.getDataRange().getValues();
+  for (var i = data.length - 1; i >= 1; i--) {
+    if (String(data[i][0]) === id) { shJ.deleteRow(i + 1); return { ok:true, jugadores: leerTabla_(T_JUG) }; }
+  }
+  return { ok:false, error:'jugador no encontrado' };
+}
+
+/* === Migración: siembra las listas (rosters) en la base como jugadores con etiqueta. ===
+   Idempotente: reusa al que ya existe (por nombre) y le fusiona la etiqueta. Correr una vez. */
+function _seedRosters() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  setup();
+  const shJ = ss.getSheetByName(T_JUG);
+  var TORNEOS = {
+    Telaso: ["Mariano Barisch","Guido Jude","Tomi Couriel","Marto Fridman","Tochu Wilhelm","Lucas Doberti","Bran Serebriani","Sebo Hochbaum","Toto Leker","Bata Burst"],
+    Famosa: ["Mariano Barisch","Guido Jude","Maro Faiman","Luki Gamar","Rifle Alfie","Tano Scolnik","Diego Kestel","Garo Getjman","Maxi Abuaf","Toto Leker","Fede Levin","Alu Fainsod","Ari Bolto","Alan Kronik","Nana Zylber","Sega Schor"]
+  };
+  Object.keys(TORNEOS).forEach(function (torneo) {
+    TORNEOS[torneo].forEach(function (full) {
+      var i = full.indexOf(' ');
+      var nombre = i < 0 ? full : full.slice(0, i);
+      var apellido = i < 0 ? '' : full.slice(i + 1);
+      asegurarJugador_(shJ, { nombre: nombre, apellido: apellido }, torneo);
+    });
+  });
 }
 
 // dGan/dPer/dJug = deltas (pueden ser negativos al borrar). No baja de 0.
