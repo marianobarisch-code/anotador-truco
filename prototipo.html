@@ -31,11 +31,16 @@
   .app{ position:absolute; inset:0; z-index:2; display:flex; flex-direction:column; }
 
   header{ flex:0 0 auto; height:calc(54px + env(safe-area-inset-top)); padding-top:env(safe-area-inset-top);
-    background:#3a2414; border-bottom:1.5px solid var(--gold-soft);
+    background:
+      repeating-linear-gradient(45deg, rgba(216,181,62,0.06) 0 1.5px, transparent 1.5px 12px),
+      repeating-linear-gradient(-45deg, rgba(216,181,62,0.06) 0 1.5px, transparent 1.5px 12px),
+      #3a2414;
+    border-bottom:2px solid var(--gold);
     display:flex; align-items:center; justify-content:space-between; padding-left:12px; padding-right:12px; }
-  .cbtn{ width:36px; height:36px; border-radius:50%; border:1.5px solid var(--gold-soft); background:transparent;
-    color:var(--gold-soft); font-size:19px; display:flex; align-items:center; justify-content:center; }
-  .htitle{ color:var(--gold); font-size:19px; font-weight:600; letter-spacing:.4px; }
+  .cbtn{ width:40px; height:40px; border-radius:50%; border:1.6px solid var(--gold); background:rgba(0,0,0,0.15);
+    color:var(--gold); font-size:19px; display:flex; align-items:center; justify-content:center; }
+  .cbtn:active{ transform:scale(.92); }
+  .htitle{ color:var(--gold); font-size:20px; font-weight:600; letter-spacing:.4px; }
 
   .view{ flex:1 1 auto; position:relative; overflow:hidden; }
   .scroll{ position:absolute; inset:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px; }
@@ -43,7 +48,7 @@
   /* ---- Anotador ---- */
   .heads{ display:flex; padding:14px 0 0; }
   .heads > div{ flex:1; text-align:center; padding:0 6px; }
-  .heads .nm{ color:#fff; font-size:21px; font-weight:500; border-bottom:2px solid var(--gold); padding:0 12px 4px; display:inline-block; }
+  .heads .nm{ color:#fff; font-size:26px; font-weight:600; border-bottom:2.5px solid var(--gold); padding:0 14px 5px; display:inline-block; }
   .heads .pl{ display:block; color:#e7d6a8; font-size:12px; margin-top:7px; line-height:1.45; }
   .board{ position:absolute; left:0; right:0; top:104px; bottom:8px; }
   .vline{ position:absolute; left:50%; top:0; bottom:0; width:1.5px; background:var(--line); transform:translateX(-50%); }
@@ -54,14 +59,14 @@
   .buenas{ top:50%; height:50%; padding:6px 0 20px; }
   .cnos{ left:0; } .cell{ right:0; }
   .slot-sq{ flex:1 1 0; min-height:0; display:flex; align-items:center; justify-content:center; }
-  .col svg{ height:100%; width:auto; max-height:84px; max-width:84px; }
+  .col svg{ height:100%; width:auto; max-height:86px; max-width:86px; filter:drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
   /* Toda la mitad del equipo suma +1 al tocarla (los +/− quedan por encima para corregir). */
   .tapzone{ position:absolute; top:0; bottom:0; left:0; width:50%; z-index:2; -webkit-tap-highlight-color:transparent; touch-action:manipulation; cursor:pointer; }
   .tapzone.tz-r{ left:auto; right:0; }
   .tapzone:active{ background:rgba(255,255,255,0.05); }
   .ctrls{ position:absolute; top:50%; transform:translateY(-50%); display:flex; flex-direction:column; gap:18px; z-index:3; }
   .ctrls.l{ left:6px; } .ctrls.r{ right:6px; }
-  .rbtn{ width:50px; height:50px; border-radius:50%; border:2.5px solid #fff; background:rgba(0,0,0,0.12); color:#fff; font-size:27px; touch-action:manipulation; }
+  .rbtn{ width:60px; height:60px; border-radius:50%; border:3px solid #fff; background:rgba(0,0,0,0.14); color:#fff; font-size:32px; touch-action:manipulation; box-shadow:0 2px 5px rgba(0,0,0,0.35); }
   .rbtn:active{ transform:scale(.92); }
   .score-pill{ position:absolute; top:6px; left:50%; transform:translateX(-50%); z-index:3; display:flex; gap:18px; align-items:center;
     background:rgba(0,0,0,0.3); border:1px solid var(--gold-soft); border-radius:20px; padding:4px 16px; font-size:14px; }
@@ -85,6 +90,10 @@
 
   /* bottom action bar */
   .actions{ flex:0 0 auto; display:flex; gap:10px; padding:12px 14px calc(14px + env(safe-area-inset-bottom)); background:rgba(0,0,0,0.18); border-top:1px solid rgba(176,141,46,0.4); }
+  /* Botón "Nuevo partido" flotando sobre la madera (como la referencia): sin barra de fondo. */
+  .nmbar{ flex:0 0 auto; display:flex; justify-content:center; padding:8px 14px calc(18px + env(safe-area-inset-bottom)); }
+  .nmbtn{ background:rgba(0,0,0,0.32); border:2px solid var(--gold); border-radius:12px; color:#fff; font-size:18px; font-weight:600; padding:14px 42px; box-shadow:0 3px 8px rgba(0,0,0,0.4); }
+  .nmbtn:active{ transform:scale(.97); }
 
   /* ---- Nueva partida ---- */
   .label{ color:#e7d6a8; font-size:13px; margin:0 0 8px 2px; }
@@ -212,9 +221,9 @@
 <div class="planks"></div>
 <div class="app">
   <header>
-    <button class="cbtn" id="hmenu" data-action="menu:open" aria-label="Menú"></button>
+    <button class="cbtn" id="hback" aria-label="Volver"></button>
     <div class="htitle" id="htitle">Anotador</div>
-    <button class="cbtn" id="hright" aria-label="Acción"></button>
+    <button class="cbtn" id="hmenu" data-action="menu:open" aria-label="Menú"></button>
   </header>
   <div class="view" id="view"></div>
   <div id="actionbar"></div>
@@ -226,6 +235,10 @@
 <svg width="0" height="0" style="position:absolute"><defs>
   <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="0.9 0.012" numOctaves="5" seed="14" result="n"/>
     <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.30  0 0 0 0 0.17  0 0 0 0 0.07  0.75 0 0 0 -0.18"/></filter>
+  <radialGradient id="vign" cx="50%" cy="40%" r="72%">
+    <stop offset="52%" stop-color="#000000" stop-opacity="0"/>
+    <stop offset="100%" stop-color="#000000" stop-opacity="0.42"/>
+  </radialGradient>
 </defs></svg>
 
 <script>
@@ -242,7 +255,8 @@
     plus:'<path d="M12 5v14M5 12h14"/>',
     trophy:'<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1 -10 0zM7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 0 -3 3"/>',
     arrow:'<path d="M5 12h14M13 6l6 6l-6 6"/>',
-    cal:'<rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M3.5 9h17M8 3v4M16 3v4"/>'
+    cal:'<rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M3.5 9h17M8 3v4M16 3v4"/>',
+    back:'<path d="M19 12H5M11 6l-6 6l6 6"/>'
   };
   function ic(n,sz){ sz=sz||22; return '<svg class="icn" viewBox="0 0 24 24" width="'+sz+'" height="'+sz+'" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+ICON[n]+'</svg>'; }
   var API_URL="https://script.google.com/macros/s/AKfycbxG82ZhM4mRR5a-UXmzy-3-f6VEYGfTgTnK2_Dz2qW5BX6vnudykW9b7A9s8VQgXjN0iA/exec";
@@ -273,8 +287,8 @@
   // Escapa texto de usuario antes de meterlo en innerHTML (evita romper/inyectar desde un nombre).
   var ESC_MAP={"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return ESC_MAP[c];}); }
-  document.querySelector(".wood").style.cssText+=";background:#5e3a20;";
-  document.querySelector(".wood").innerHTML='<svg preserveAspectRatio="none" viewBox="0 0 400 900" style="width:100%;height:100%"><rect width="400" height="900" fill="#5e3a20"/><rect width="400" height="900" filter="url(#grain)"/></svg>';
+  document.querySelector(".wood").style.cssText+=";background:#33200f;";
+  document.querySelector(".wood").innerHTML='<svg preserveAspectRatio="none" viewBox="0 0 400 900" style="width:100%;height:100%"><rect width="400" height="900" fill="#33200f"/><rect width="400" height="900" filter="url(#grain)"/><rect width="400" height="900" fill="url(#vign)"/></svg>';
   $("#hmenu").innerHTML=ic("menu",20);
 
   function player(id){ return state.players.find(function(p){return p.id===id;}); }
@@ -476,10 +490,14 @@
   /* ---------- fósforos ---------- */
   function squareSVG(n){
     // Orden de dibujado: arriba → izquierda → derecha → abajo → cruza (como anotador real / Truco Blitz)
-    var a=10,b=50, seg=[[a,a,b,a],[a,b,a,a],[b,a,b,b],[b,b,a,b],[a,b,b,a]], s='<svg viewBox="0 0 60 60">';
+    var a=11,b=49, seg=[[a,a,b,a],[a,b,a,a],[b,a,b,b],[b,b,a,b],[a,b,b,a]], s='<svg viewBox="0 0 60 60">';
+    // palo de fósforo: cuerpo de madera clara + cabeza roja bulbosa en cada punta (más ancha que el palo)
     for(var i=0;i<n;i++){var g=seg[i];
-      s+='<line x1="'+g[0]+'" y1="'+g[1]+'" x2="'+g[2]+'" y2="'+g[3]+'" stroke="#ece0c2" stroke-width="3" stroke-linecap="round"/>';
-      s+='<circle cx="'+g[0]+'" cy="'+g[1]+'" r="3" fill="#c0392b"/><circle cx="'+g[2]+'" cy="'+g[3]+'" r="3" fill="#c0392b"/>';
+      s+='<line x1="'+g[0]+'" y1="'+g[1]+'" x2="'+g[2]+'" y2="'+g[3]+'" stroke="#ece0c4" stroke-width="3.4" stroke-linecap="round"/>';
+    }
+    for(i=0;i<n;i++){var h=seg[i];
+      s+='<circle cx="'+h[0]+'" cy="'+h[1]+'" r="4.2" fill="#cf2f22"/><circle cx="'+h[2]+'" cy="'+h[3]+'" r="4.2" fill="#cf2f22"/>';
+      s+='<circle cx="'+(h[0]-0.9)+'" cy="'+(h[1]-0.9)+'" r="1.4" fill="#f07564" opacity="0.8"/><circle cx="'+(h[2]-0.9)+'" cy="'+(h[3]-0.9)+'" r="1.4" fill="#f07564" opacity="0.8"/>';
     }
     return s+'</svg>';
   }
@@ -506,8 +524,12 @@
 
   /* ---------- render ---------- */
   function render(){
-    var v=state.view, view=$("#view"), bar=$("#actionbar"), title=$("#htitle"), hr=$("#hright");
-    bar.className=""; bar.innerHTML=""; hr.innerHTML=""; hr.onclick=null; hr.style.visibility="visible";
+    var v=state.view, view=$("#view"), bar=$("#actionbar"), title=$("#htitle"), hr=$("#hback");
+    bar.className=""; bar.innerHTML=""; hr.onclick=null;
+    // Botón atrás (izquierda del header): destino según pantalla
+    var backTo = v==="jornadaDet" ? "nav:jornadas" : v==="anotador" ? (state.active?"discard":null) : "nav:anotador";
+    if(backTo){ hr.innerHTML=ic("back",22); hr.setAttribute("data-action",backTo); hr.style.visibility="visible"; }
+    else { hr.innerHTML=""; hr.removeAttribute("data-action"); hr.style.visibility="hidden"; }
 
     if(v==="anotador"){
       title.textContent="Anotador";
@@ -537,13 +559,13 @@
         }
         view.innerHTML='<div class="empty"><img class="logo" src="icon.svg" alt="Truco">'+inner+'</div>';
       }else{
-        hr.innerHTML=ic("trash",20); hr.setAttribute("data-action","discard");
         var g=state.active;
         var n1=g.teams[0].map(function(id){return esc(player(id).nombre);}).join(" · ");
         var n2=g.teams[1].map(function(id){return esc(player(id).nombre);}).join(" · ");
+        bar.className="nmbar"; bar.innerHTML='<button class="nmbtn" data-action="nuevo:partido">Nuevo partido</button>';
         view.innerHTML=
-          '<div class="heads"><div><span class="nm">Nos</span><span class="pl">'+n1+'</span></div>'+
-          '<div><span class="nm">Ellos</span><span class="pl">'+n2+'</span></div></div>'+
+          '<div class="heads"><div><span class="nm">Nos:</span><span class="pl">'+n1+'</span></div>'+
+          '<div><span class="nm">Ellos:</span><span class="pl">'+n2+'</span></div></div>'+
           '<div class="board">'+
             '<div class="score-pill"><span>'+g.score[0]+'</span><span style="color:var(--gold-soft)">·</span><span>'+g.score[1]+'</span></div>'+
             '<div class="vline"></div><div class="hline"></div>'+
@@ -560,7 +582,7 @@
     }
 
     else if(v==="nueva"){
-      title.textContent="Nueva partida"; hr.style.visibility="hidden";
+      title.textContent="Nueva partida";
       var m=state.setup.modo, slots=m, tor=state.setup.torneo, ap=state.setup.apuesta;
       var html='<div class="scroll">'+
         '<div class="label">Torneo</div>'+
@@ -609,7 +631,7 @@
     }
 
     else if(v==="ranking"){
-      title.textContent="Ranking"; hr.style.visibility="hidden";
+      title.textContent="Ranking";
       var key=state.rankSort, scope=state.rankScope;
       var rows=statsFor(scope).sort(function(a,b){
         if(key==="g") return b.g-a.g;
@@ -648,7 +670,7 @@
     }
 
     else if(v==="jornadas"){
-      title.textContent="Jornadas"; hr.style.visibility="hidden";
+      title.textContent="Jornadas";
       var js=listaJornadas();
       var h='<div class="scroll">';
       if(js.length===0){
@@ -669,7 +691,7 @@
     }
 
     else if(v==="jornadaDet"){
-      title.textContent="Jornada"; hr.style.visibility="hidden";
+      title.textContent="Jornada";
       var jid=state.jornadaSel, data=saldosJornada(jid);
       var meta=listaJornadas().filter(function(g){return g.jid===String(jid);})[0];
       var h='<div class="scroll">';
@@ -867,6 +889,7 @@
       var g=state.active; g.score[ti]=Math.max(0,Math.min(LIMIT,g.score[ti]+d)); render();
       if(g.score[ti]>=LIMIT) winnerModal(ti); return; }
     if(a==="discard"){ state.active=null; closeScrim(); state.view="anotador"; return render(); }
+    if(a==="nuevo:partido"){ state.active=null; state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; state.view="nueva"; return render(); }
     if(a==="finalize"){ return finalize(+t.getAttribute("data-w")); }
     if(a==="repeat"){ return finalize(+t.getAttribute("data-w"), true); }
     if(a==="rank:sort"){ state.rankSort=t.getAttribute("data-k"); return render(); }
