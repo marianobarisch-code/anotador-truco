@@ -491,13 +491,12 @@
   function squareSVG(n){
     // Orden de dibujado: arriba → izquierda → derecha → abajo → cruza (como anotador real / Truco Blitz)
     var a=11,b=49, seg=[[a,a,b,a],[a,b,a,a],[b,a,b,b],[b,b,a,b],[a,b,b,a]], s='<svg viewBox="0 0 60 60">';
-    // palo de fósforo: cuerpo de madera clara + cabeza roja bulbosa en cada punta (más ancha que el palo)
+    // palo de fósforo: cuerpo de madera clara + cabeza roja proporcionada (~1.5× el ancho del palo) en cada punta
     for(var i=0;i<n;i++){var g=seg[i];
-      s+='<line x1="'+g[0]+'" y1="'+g[1]+'" x2="'+g[2]+'" y2="'+g[3]+'" stroke="#ece0c4" stroke-width="3.4" stroke-linecap="round"/>';
+      s+='<line x1="'+g[0]+'" y1="'+g[1]+'" x2="'+g[2]+'" y2="'+g[3]+'" stroke="#e9ddc1" stroke-width="3.8" stroke-linecap="round"/>';
     }
     for(i=0;i<n;i++){var h=seg[i];
-      s+='<circle cx="'+h[0]+'" cy="'+h[1]+'" r="4.2" fill="#cf2f22"/><circle cx="'+h[2]+'" cy="'+h[3]+'" r="4.2" fill="#cf2f22"/>';
-      s+='<circle cx="'+(h[0]-0.9)+'" cy="'+(h[1]-0.9)+'" r="1.4" fill="#f07564" opacity="0.8"/><circle cx="'+(h[2]-0.9)+'" cy="'+(h[3]-0.9)+'" r="1.4" fill="#f07564" opacity="0.8"/>';
+      s+='<circle cx="'+h[0]+'" cy="'+h[1]+'" r="2.9" fill="#d23a2b"/><circle cx="'+h[2]+'" cy="'+h[3]+'" r="2.9" fill="#d23a2b"/>';
     }
     return s+'</svg>';
   }
