@@ -510,14 +510,18 @@
   /* ---------- fósforos ---------- */
   function squareSVG(n){
     // Orden de dibujado: arriba → izquierda → derecha → abajo → cruza (como anotador real / Truco Blitz)
-    var a=11,b=49, seg=[[a,a,b,a],[a,b,a,a],[b,a,b,b],[b,b,a,b],[a,b,b,a]], s='<svg viewBox="0 0 60 60">';
-    // palo de fósforo: cuerpo de madera clara + cabeza roja proporcionada (~1.5× el ancho del palo) en cada punta
-    for(var i=0;i<n;i++){var g=seg[i];
-      s+='<line x1="'+g[0]+'" y1="'+g[1]+'" x2="'+g[2]+'" y2="'+g[3]+'" stroke="#e9ddc1" stroke-width="3.8" stroke-linecap="round"/>';
-    }
-    for(i=0;i<n;i++){var h=seg[i];
-      s+='<circle cx="'+h[0]+'" cy="'+h[1]+'" r="2.9" fill="#d23a2b"/><circle cx="'+h[2]+'" cy="'+h[3]+'" r="2.9" fill="#d23a2b"/>';
-    }
+    var a=11,b=49, seg=[[a,a,b,a],[a,b,a,a],[b,a,b,b],[b,b,a,b],[a,b,b,a]];
+    // Palo de fósforo realista: 3 capas (borde/sombra + cuerpo + brillo central) → look cilíndrico.
+    function palo(g,color,w){ return '<line x1="'+g[0]+'" y1="'+g[1]+'" x2="'+g[2]+'" y2="'+g[3]+'" stroke="'+color+'" stroke-width="'+w+'" stroke-linecap="round"/>'; }
+    // Cabeza roja glossy: base oscura + rojo medio + brillo especular (luz arriba-izquierda).
+    function cabeza(x,y){ return '<circle cx="'+x+'" cy="'+y+'" r="3.2" fill="#9e2114"/>'+
+      '<circle cx="'+(x-0.5)+'" cy="'+(y-0.5)+'" r="2.5" fill="#d5372a"/>'+
+      '<circle cx="'+(x-1)+'" cy="'+(y-1)+'" r="0.95" fill="#ff9c82" opacity="0.9"/>'; }
+    var s='<svg viewBox="0 0 60 60">', i;
+    for(i=0;i<n;i++) s+=palo(seg[i],'#c9b688',4.6);   // borde/sombra del palo (lado oscuro)
+    for(i=0;i<n;i++) s+=palo(seg[i],'#e7d8b2',3.2);   // cuerpo de madera clara
+    for(i=0;i<n;i++) s+=palo(seg[i],'#f8f0da',1.3);   // brillo central (reflejo)
+    for(i=0;i<n;i++){ s+=cabeza(seg[i][0],seg[i][1])+cabeza(seg[i][2],seg[i][3]); }
     return s+'</svg>';
   }
   // 3 lugares fijos por mitad: cada cuadrado siempre en su posición (como anotador real)
