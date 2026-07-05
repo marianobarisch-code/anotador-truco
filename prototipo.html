@@ -256,7 +256,8 @@
     trophy:'<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1 -10 0zM7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 0 -3 3"/>',
     arrow:'<path d="M5 12h14M13 6l6 6l-6 6"/>',
     cal:'<rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M3.5 9h17M8 3v4M16 3v4"/>',
-    back:'<path d="M19 12H5M11 6l-6 6l6 6"/>'
+    back:'<path d="M19 12H5M11 6l-6 6l6 6"/>',
+    tally:'<path d="M6 4v16M11 4v16M16 4v16M3 20L21 4"/>'
   };
   function ic(n,sz){ sz=sz||22; return '<svg class="icn" viewBox="0 0 24 24" width="'+sz+'" height="'+sz+'" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+ICON[n]+'</svg>'; }
   var API_URL="https://script.google.com/macros/s/AKfycbxG82ZhM4mRR5a-UXmzy-3-f6VEYGfTgTnK2_Dz2qW5BX6vnudykW9b7A9s8VQgXjN0iA/exec";
@@ -269,6 +270,7 @@
     nextId:1,
     active:null,
     jornada:null,          // {id, inicio}  — jornada (sesión) abierta (compartida, del servidor)
+    quick:{score:[0,0]},   // tanteador rápido (local, sin jornada ni guardado)
     jornadaSel:null,       // jid en pantalla de detalle
     jornadaBusy:false,     // abriendo/cerrando jornada contra el servidor
     confirm:null,          // {msg, action, id} para el modal de confirmación
@@ -316,6 +318,11 @@
       return j;
     }catch(e){ return null; } }
   function saveJornada(j){ try{ if(j) localStorage.setItem(LS_JOR, JSON.stringify(j)); else localStorage.removeItem(LS_JOR); }catch(e){} }
+
+  /* ---------- Tanteador rápido (board suelto, sin jornada ni guardado) ---------- */
+  var LS_QUICK="truco_quick_v1";
+  function loadQuick(){ try{ var raw=localStorage.getItem(LS_QUICK); if(raw){ var q=JSON.parse(raw); if(q&&q.score&&q.score.length===2) return {score:[Number(q.score[0])||0, Number(q.score[1])||0]}; } }catch(e){} return {score:[0,0]}; }
+  function saveQuick(){ try{ localStorage.setItem(LS_QUICK, JSON.stringify(state.quick)); }catch(e){} }
   // La jornada abierta es del SERVIDOR (compartida entre todos). El localStorage es solo caché para UI instantánea/offline.
   function setJornada(srv){ var ms=new Date(srv.inicio).getTime(); if(isNaN(ms)) ms=Number(srv.id)||Date.now();
     state.jornada={id:String(srv.id), inicio:ms}; saveJornada(state.jornada); }
@@ -502,6 +509,23 @@
   }
   // 3 lugares fijos por mitad: cada cuadrado siempre en su posición (como anotador real)
   function slotsHTML(pts){ var out=''; for(var s=0;s<3;s++){ var base=s*5; var n = pts>=base+5 ? 5 : (pts>base ? pts-base : 0); out+='<div class="slot-sq">'+(n>0?squareSVG(n):'')+'</div>'; } return out; }
+  // Tablero visual (madera + fósforos + +/− + tocar el lado). Reusado por la partida y el tanteador rápido.
+  function boardHTML(score, n1, n2){
+    return '<div class="heads"><div><span class="nm">Nos:</span><span class="pl">'+n1+'</span></div>'+
+      '<div><span class="nm">Ellos:</span><span class="pl">'+n2+'</span></div></div>'+
+      '<div class="board">'+
+        '<div class="score-pill"><span>'+score[0]+'</span><span style="color:var(--gold-soft)">·</span><span>'+score[1]+'</span></div>'+
+        '<div class="vline"></div><div class="hline"></div>'+
+        '<div class="tapzone" data-action="plus" data-t="0" aria-label="Sumar a Nos"></div>'+
+        '<div class="tapzone tz-r" data-action="plus" data-t="1" aria-label="Sumar a Ellos"></div>'+
+        '<div class="col cnos malas">'+slotsHTML(Math.min(15,score[0]))+'</div>'+
+        '<div class="col cnos buenas">'+slotsHTML(Math.max(0,score[0]-15))+'</div>'+
+        '<div class="col cell malas">'+slotsHTML(Math.min(15,score[1]))+'</div>'+
+        '<div class="col cell buenas">'+slotsHTML(Math.max(0,score[1]-15))+'</div>'+
+        '<div class="ctrls l"><button class="rbtn" data-action="plus" data-t="0">+</button><button class="rbtn" data-action="minus" data-t="0">−</button></div>'+
+        '<div class="ctrls r"><button class="rbtn" data-action="plus" data-t="1">+</button><button class="rbtn" data-action="minus" data-t="1">−</button></div>'+
+      '</div>';
+  }
 
   /* ---------- ranking: stats calculadas desde las partidas ---------- */
   // scope: "global" | "Famosa" | "Telaso". Mismo nombre = misma persona. Mix cuenta solo en global.
@@ -562,22 +586,14 @@
         var n1=g.teams[0].map(function(id){return esc(player(id).nombre);}).join(" · ");
         var n2=g.teams[1].map(function(id){return esc(player(id).nombre);}).join(" · ");
         bar.className="nmbar"; bar.innerHTML='<button class="nmbtn" data-action="nuevo:partido">Nuevo partido</button>';
-        view.innerHTML=
-          '<div class="heads"><div><span class="nm">Nos:</span><span class="pl">'+n1+'</span></div>'+
-          '<div><span class="nm">Ellos:</span><span class="pl">'+n2+'</span></div></div>'+
-          '<div class="board">'+
-            '<div class="score-pill"><span>'+g.score[0]+'</span><span style="color:var(--gold-soft)">·</span><span>'+g.score[1]+'</span></div>'+
-            '<div class="vline"></div><div class="hline"></div>'+
-            '<div class="tapzone" data-action="plus" data-t="0" aria-label="Sumar a Nos"></div>'+
-            '<div class="tapzone tz-r" data-action="plus" data-t="1" aria-label="Sumar a Ellos"></div>'+
-            '<div class="col cnos malas">'+slotsHTML(Math.min(15,g.score[0]))+'</div>'+
-            '<div class="col cnos buenas">'+slotsHTML(Math.max(0,g.score[0]-15))+'</div>'+
-            '<div class="col cell malas">'+slotsHTML(Math.min(15,g.score[1]))+'</div>'+
-            '<div class="col cell buenas">'+slotsHTML(Math.max(0,g.score[1]-15))+'</div>'+
-            '<div class="ctrls l"><button class="rbtn" data-action="plus" data-t="0">+</button><button class="rbtn" data-action="minus" data-t="0">−</button></div>'+
-            '<div class="ctrls r"><button class="rbtn" data-action="plus" data-t="1">+</button><button class="rbtn" data-action="minus" data-t="1">−</button></div>'+
-          '</div>';
+        view.innerHTML=boardHTML(g.score, n1, n2);
       }
+    }
+
+    else if(v==="tanteador"){
+      title.textContent="Tanteador";
+      bar.className="nmbar"; bar.innerHTML='<button class="nmbtn" data-action="quick:reset">Reiniciar 0 – 0</button>';
+      view.innerHTML=boardHTML(state.quick.score, "", "");
     }
 
     else if(v==="nueva"){
@@ -603,18 +619,22 @@
         '<div class="label">Modo de juego</div><div class="modes">'+
         '<div class="mode'+(m===2?' on':'')+'" data-action="mode" data-m="2">2 vs 2</div>'+
         '<div class="mode'+(m===3?' on':'')+'" data-action="mode" data-m="3">3 vs 3</div></div>';
-      ["Equipo 1 — Nosotros","Equipo 2 — Ellos"].forEach(function(tn,ti){
-        html+='<div class="teamblock"><div class="label">'+tn+'</div>';
-        for(var s=0;s<slots;s++){
-          var id=state.setup.teams[ti][s];
-          if(id){ var p=player(id);
-            html+='<div class="slot filled"><span>'+esc(fullname(p))+'</span><span data-action="slot:clear" data-t="'+ti+'" data-s="'+s+'" style="color:#cdbf9a">'+ic("x",18)+'</span></div>';
-          }else{
-            html+='<div class="slot vacia" data-action="slot:open" data-t="'+ti+'" data-s="'+s+'"><span>Elegir jugador…</span>'+ic("chevron",18)+'</div>';
+      if(!tor){
+        html+='<div class="rk-empty" style="padding:24px 16px">Elegí primero el <b>torneo</b> y el <b>monto</b> para cargar los jugadores.</div>';
+      } else {
+        ["Equipo 1 — Nosotros","Equipo 2 — Ellos"].forEach(function(tn,ti){
+          html+='<div class="teamblock"><div class="label">'+tn+'</div>';
+          for(var s=0;s<slots;s++){
+            var id=state.setup.teams[ti][s];
+            if(id){ var p=player(id);
+              html+='<div class="slot filled"><span>'+esc(fullname(p))+'</span><span data-action="slot:clear" data-t="'+ti+'" data-s="'+s+'" style="color:#cdbf9a">'+ic("x",18)+'</span></div>';
+            }else{
+              html+='<div class="slot vacia" data-action="slot:open" data-t="'+ti+'" data-s="'+s+'"><span>Elegir jugador…</span>'+ic("chevron",18)+'</div>';
+            }
           }
-        }
-        html+='</div>';
-      });
+          html+='</div>';
+        });
+      }
       html+='</div>';
       view.innerHTML=html;
       function apOk(){ return ap.simple>0 && ap.doble>0; }
@@ -739,6 +759,7 @@
     sc.innerHTML='<div class="menu">'+
       '<div class="mtitle">Truco</div>'+
       '<div class="mitem" data-action="nav:anotador">'+ic("cards",20)+' Anotador</div>'+
+      '<div class="mitem" data-action="nav:tanteador">'+ic("tally",20)+' Tanteador rápido</div>'+
       '<div class="mitem" data-action="nav:ranking">'+ic("trophy",20)+' Ranking</div>'+
       '<div class="mitem" data-action="nav:jornadas">'+ic("cal",20)+' Jornadas</div>'+
       '<div class="mitem" data-action="scrim:close">'+ic("x",20)+' Cerrar</div></div>';
@@ -800,6 +821,16 @@
     sc.classList.add("show");
   }
 
+  // Ganador del tanteador rápido: no guarda nada, solo ofrece reiniciar.
+  function quickWinner(w){
+    var sc=$("#scrim");
+    sc.innerHTML='<div class="modal"><div class="trophy">'+ic("trophy",42)+'</div>'+
+      '<h2>¡Ganó '+(w===0?"Nos":"Ellos")+'!</h2>'+
+      '<p style="margin:6px 0 14px">Tanteador rápido — no se guarda nada.</p>'+
+      '<div class="row"><button class="ghost" data-action="scrim:close">Seguir</button>'+
+      '<button class="primary" data-action="quick:reset">Reiniciar 0 – 0</button></div></div>';
+    sc.classList.add("show");
+  }
   function confirmModal(){
     var c=state.confirm; if(!c) return;
     var sc=$("#scrim");
@@ -860,6 +891,7 @@
     if(a==="menu:open") return openMenu();
     if(a==="scrim:close") return closeScrim();
     if(a==="nav:anotador"){ closeScrim(); state.view="anotador"; return render(); }
+    if(a==="nav:tanteador"){ closeScrim(); state.view="tanteador"; return render(); }
     if(a==="nav:ranking"){ closeScrim(); state.view="ranking"; return render(); }
     if(a==="nav:jornadas"){ closeScrim(); state.view="jornadas"; return render(); }
     if(a==="jornada:start"){ return startJornada(); }
@@ -885,10 +917,12 @@
       state.setup.teams[state.sheet.t][state.sheet.s]=chosen.id; closeScrim(); return render(); }
     if(a==="start"){ var ap=state.setup.apuesta; state.active={torneo:state.setup.torneo, modo:state.setup.modo, teams:[state.setup.teams[0].slice(),state.setup.teams[1].slice()], score:[0,0], apuesta:{simple:ap.simple, doble:ap.doble}}; state.view="anotador"; return render(); }
     if(a==="plus"||a==="minus"){ var ti=+t.getAttribute("data-t"); var d=a==="plus"?1:-1;
-      var g=state.active; g.score[ti]=Math.max(0,Math.min(LIMIT,g.score[ti]+d)); render();
+      if(state.view==="tanteador"){ var q=state.quick; q.score[ti]=Math.max(0,Math.min(LIMIT,q.score[ti]+d)); saveQuick(); render(); if(q.score[ti]>=LIMIT) quickWinner(ti); return; }
+      var g=state.active; if(!g) return; g.score[ti]=Math.max(0,Math.min(LIMIT,g.score[ti]+d)); render();
       if(g.score[ti]>=LIMIT) winnerModal(ti); return; }
     if(a==="discard"){ state.active=null; closeScrim(); state.view="anotador"; return render(); }
     if(a==="nuevo:partido"){ state.active=null; state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; state.view="nueva"; return render(); }
+    if(a==="quick:reset"){ state.quick.score=[0,0]; saveQuick(); closeScrim(); state.view="tanteador"; return render(); }
     if(a==="finalize"){ return finalize(+t.getAttribute("data-w")); }
     if(a==="repeat"){ return finalize(+t.getAttribute("data-w"), true); }
     if(a==="rank:sort"){ state.rankSort=t.getAttribute("data-k"); return render(); }
@@ -900,9 +934,7 @@
     if(s.getAttribute("data-change")==="torneo"){
       var tn=s.value||null; state.setup.torneo=tn;
       if(tn) cargarRoster(tn);
-      var mm=state.setup.modo; state.setup.teams=[[],[]];
-      for(var k=0;k<mm;k++){state.setup.teams[0].push(null); state.setup.teams[1].push(null);}
-      return render();
+      return render();   // NO borra los jugadores ya elegidos al cambiar de torneo
     }
   });
   $("#scrim").addEventListener("click",function(e){ if(e.target===this) closeScrim(); });
@@ -911,6 +943,7 @@
   setInterval(function(){ if(autoCerrarSiVence()) render(); }, 60000);
   document.addEventListener("visibilitychange", function(){ if(!document.hidden && autoCerrarSiVence()) render(); });
 
+  state.quick=loadQuick();       // tanteador rápido persistido
   state.jornada=loadJornada();   // caché instantánea (el servidor reconcilia al cargar)
   cargar();
 })();
