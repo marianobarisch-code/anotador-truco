@@ -3,7 +3,7 @@
   "short_name": "Truco",
   "description": "Anotador de truco con ranking, jornadas y saldos del día.",
   "lang": "es",
-  "start_url": "prototipo.html?v=13",
+  "start_url": "prototipo.html?v=14",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

@@ -94,6 +94,14 @@
   .nmbar{ flex:0 0 auto; display:flex; justify-content:center; padding:8px 14px calc(18px + env(safe-area-inset-bottom)); }
   .nmbtn{ background:rgba(0,0,0,0.32); border:2px solid var(--gold); border-radius:12px; color:#fff; font-size:18px; font-weight:600; padding:14px 42px; box-shadow:0 3px 8px rgba(0,0,0,0.4); }
   .nmbtn:active{ transform:scale(.97); }
+  /* Tarjeta "Repetir equipo ganador" en Nueva partida */
+  .repeatcard{ display:flex; align-items:center; gap:12px; margin-bottom:18px; padding:13px 15px; border-radius:12px;
+    border:2px solid var(--gold); background:rgba(216,181,62,0.12); }
+  .repeatcard:active{ transform:scale(.99); }
+  .repeatcard .rc-ic{ font-size:24px; color:var(--gold); flex:0 0 auto; }
+  .repeatcard .rc-txt{ display:flex; flex-direction:column; min-width:0; }
+  .repeatcard .rc-txt b{ color:#f0e2b6; font-size:15px; font-weight:600; }
+  .repeatcard .rc-txt span{ color:#cdbf9a; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
   /* ---- Nueva partida ---- */
   .label{ color:#e7d6a8; font-size:13px; margin:0 0 8px 2px; }
@@ -271,6 +279,7 @@
     active:null,
     jornada:null,          // {id, inicio}  — jornada (sesión) abierta (compartida, del servidor)
     quick:{score:[0,0]},   // tanteador rápido (local, sin jornada ni guardado)
+    lastWinner:null,       // último equipo ganador (para "Repetir equipo ganador" al armar nueva partida)
     jornadaSel:null,       // jid en pantalla de detalle
     jornadaBusy:false,     // abriendo/cerrando jornada contra el servidor
     confirm:null,          // {msg, action, id} para el modal de confirmación
@@ -323,6 +332,10 @@
   var LS_QUICK="truco_quick_v1";
   function loadQuick(){ try{ var raw=localStorage.getItem(LS_QUICK); if(raw){ var q=JSON.parse(raw); if(q&&q.score&&q.score.length===2) return {score:[Number(q.score[0])||0, Number(q.score[1])||0]}; } }catch(e){} return {score:[0,0]}; }
   function saveQuick(){ try{ localStorage.setItem(LS_QUICK, JSON.stringify(state.quick)); }catch(e){} }
+  // Último equipo ganador (para "Repetir equipo ganador" al armar la próxima partida)
+  var LS_LASTWIN="truco_lastwin_v1";
+  function loadLastWin(){ try{ var raw=localStorage.getItem(LS_LASTWIN); if(raw){ var w=JSON.parse(raw); if(w&&w.winInfo&&w.winInfo.length) return w; } }catch(e){} return null; }
+  function saveLastWin(){ try{ localStorage.setItem(LS_LASTWIN, JSON.stringify(state.lastWinner)); }catch(e){} }
   // La jornada abierta es del SERVIDOR (compartida entre todos). El localStorage es solo caché para UI instantánea/offline.
   function setJornada(srv){ var ms=new Date(srv.inicio).getTime(); if(isNaN(ms)) ms=Number(srv.id)||Date.now();
     state.jornada={id:String(srv.id), inicio:ms}; saveJornada(state.jornada); }
@@ -599,7 +612,11 @@
     else if(v==="nueva"){
       title.textContent="Nueva partida";
       var m=state.setup.modo, slots=m, tor=state.setup.torneo, ap=state.setup.apuesta;
+      var lw=state.lastWinner;
+      var repeatCard = lw ? '<div class="repeatcard" data-action="repeat:apply"><span class="rc-ic">↻</span>'+
+        '<div class="rc-txt"><b>Repetir equipo ganador</b><span>'+esc(lw.winInfo.map(function(x){return x.nombre;}).join(" · "))+'</span></div></div>' : '';
       var html='<div class="scroll">'+
+        repeatCard+
         '<div class="label">Torneo</div>'+
         '<div class="ddwrap"><select class="dropdown" data-change="torneo">'+
           '<option value=""'+(tor?'':' selected')+'>Seleccionar…</option>'+
@@ -808,16 +825,13 @@
     var montoLine='<p style="margin:0 0 14px;font-size:15px;color:'+(mp.esDoble?"#7ec47e":"#e7d6a8")+'">'+
       (mp.esDoble?"¡Ganaron en las malas! Se cobra <b>doble</b>: ":"Se cobra: ")+'<b>'+pesos(mp.monto)+'</b> por persona</p>';
     var err = state.errorMsg ? '<p style="color:#e8b34a">'+state.errorMsg+'</p>' : '';
-    var repeatBtn = (!state.guardando && state.jornada)
-      ? '<button class="ghost full" data-action="repeat" data-w="'+w+'" style="margin-top:10px;border-color:var(--gold);color:#f0e2b6">↻ Repetir equipo ganador</button>'
-      : '';
     var btns = state.guardando
       ? '<button class="primary" disabled style="opacity:.6;width:100%">Guardando…</button>'
       : '<div class="row"><button class="ghost danger" data-action="discard">Descartar</button>'+
         '<button class="primary" data-action="finalize" data-w="'+w+'">Guardar partida</button></div>';
     sc.innerHTML='<div class="modal"><div class="trophy">'+ic("trophy",42)+'</div>'+
       '<h2>¡Ganó '+(w===0?"Nos":"Ellos")+'!</h2>'+
-      '<p style="margin:6px 0 6px">'+names+'<br>+1 victoria para cada uno</p>'+montoLine+err+btns+repeatBtn+'</div>';
+      '<p style="margin:6px 0 6px">'+names+'<br>+1 victoria para cada uno</p>'+montoLine+err+btns+'</div>';
     sc.classList.add("show");
   }
 
@@ -861,7 +875,7 @@
     var preset=(apuesta.simple===5000&&apuesta.doble===10000)?"p5":(apuesta.simple===10000&&apuesta.doble===20000)?"p10":"custom";
     state.setup={ torneo:torneo, modo:modo, teams:teams, apuesta:{preset:preset, simple:apuesta.simple, doble:apuesta.doble} };
   }
-  function finalize(w, repeat){
+  function finalize(w){
     var g=state.active, mp=montoPartida(g,w);
     function pp(id){ var p=player(id); return p.nuevo ? {nombre:p.nombre,apellido:p.apellido} : {id:p.id,nombre:p.nombre,apellido:p.apellido}; }
     // capturar nombres del ganador ANTES de guardar (los nuevos cambian de id tmp→real al refrescar)
@@ -879,8 +893,9 @@
       if(d&&d.ok){ state.players=mapJug(d.jugadores); if(d.partidas) state.partidas=d.partidas;
         if(state.jornada && d.id_partida) saveMapEntry(d.id_partida, state.jornada.id);
         state.active=null; closeScrim();
-        if(repeat){ prepareRepeat(winInfo, w, modo, torneo, apuesta); state.view="nueva"; render(); }
-        else { state.rankScope=(tor==="Famosa"||tor==="Telaso")?tor:"global"; state.view="ranking"; render(); } }
+        // recordar el equipo ganador para ofrecer "Repetir equipo ganador" al armar la próxima partida
+        state.lastWinner={ winInfo:winInfo, w:w, modo:modo, torneo:torneo, apuesta:apuesta }; saveLastWin();
+        state.rankScope=(tor==="Famosa"||tor==="Telaso")?tor:"global"; state.view="ranking"; render(); }
       else { state.errorMsg=(d&&d.error)?("Error: "+d.error):"No se pudo guardar"; winnerModal(w); }
     }).catch(function(){ state.guardando=false; state.errorMsg="Sin conexión — no se guardó"; winnerModal(w); });
   }
@@ -924,7 +939,7 @@
     if(a==="nuevo:partido"){ state.active=null; state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; state.view="nueva"; return render(); }
     if(a==="quick:reset"){ state.quick.score=[0,0]; saveQuick(); closeScrim(); state.view="tanteador"; return render(); }
     if(a==="finalize"){ return finalize(+t.getAttribute("data-w")); }
-    if(a==="repeat"){ return finalize(+t.getAttribute("data-w"), true); }
+    if(a==="repeat:apply"){ var lw=state.lastWinner; if(lw){ prepareRepeat(lw.winInfo, lw.w, lw.modo, lw.torneo, lw.apuesta); } state.view="nueva"; return render(); }
     if(a==="rank:sort"){ state.rankSort=t.getAttribute("data-k"); return render(); }
     if(a==="rank:scope"){ state.rankScope=t.getAttribute("data-sc"); return render(); }
     if(a==="reload"){ return cargar(); }
@@ -944,6 +959,7 @@
   document.addEventListener("visibilitychange", function(){ if(!document.hidden && autoCerrarSiVence()) render(); });
 
   state.quick=loadQuick();       // tanteador rápido persistido
+  state.lastWinner=loadLastWin(); // último equipo ganador para "Repetir equipo ganador"
   state.jornada=loadJornada();   // caché instantánea (el servidor reconcilia al cargar)
   cargar();
 })();
