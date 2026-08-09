@@ -880,6 +880,7 @@
     state.setup={ torneo:torneo, modo:modo, teams:teams, apuesta:{preset:preset, simple:apuesta.simple, doble:apuesta.doble} };
   }
   function finalize(w){
+    if(state.guardando || !state.active) return;   // candado anti-doble-toque: nunca guardar la misma partida dos veces
     var g=state.active, mp=montoPartida(g,w);
     function pp(id){ var p=player(id); return p.nuevo ? {nombre:p.nombre,apellido:p.apellido} : {id:p.id,nombre:p.nombre,apellido:p.apellido}; }
     // capturar nombres del ganador ANTES de guardar (los nuevos cambian de id tmp→real al refrescar)
