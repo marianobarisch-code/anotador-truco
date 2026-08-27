@@ -280,6 +280,7 @@
     jornada:null,          // {id, inicio}  — jornada (sesión) abierta (compartida, del servidor)
     quick:{score:[0,0]},   // tanteador rápido (local, sin jornada ni guardado)
     lastWinner:null,       // último equipo ganador (para "Repetir equipo ganador" al armar nueva partida)
+    lastMatch:null,        // última partida completa (los dos equipos) para "Repetir partido"
     jornadaSel:null,       // jid en pantalla de detalle
     jornadaBusy:false,     // abriendo/cerrando jornada contra el servidor
     confirm:null,          // {msg, action, id} para el modal de confirmación
@@ -336,6 +337,10 @@
   var LS_LASTWIN="truco_lastwin_v1";
   function loadLastWin(){ try{ var raw=localStorage.getItem(LS_LASTWIN); if(raw){ var w=JSON.parse(raw); if(w&&w.winInfo&&w.winInfo.length) return w; } }catch(e){} return null; }
   function saveLastWin(){ try{ localStorage.setItem(LS_LASTWIN, JSON.stringify(state.lastWinner)); }catch(e){} }
+  // Última partida completa (los dos equipos), para "Repetir partido"
+  var LS_LASTMATCH="truco_lastmatch_v1";
+  function loadLastMatch(){ try{ var raw=localStorage.getItem(LS_LASTMATCH); if(raw){ var m=JSON.parse(raw); if(m&&m.teams&&m.teams.length===2) return m; } }catch(e){} return null; }
+  function saveLastMatch(){ try{ localStorage.setItem(LS_LASTMATCH, JSON.stringify(state.lastMatch)); }catch(e){} }
   // La jornada abierta es del SERVIDOR (compartida entre todos). El localStorage es solo caché para UI instantánea/offline.
   function setJornada(srv){ var ms=new Date(srv.inicio).getTime(); if(isNaN(ms)) ms=Number(srv.id)||Date.now();
     state.jornada={id:String(srv.id), inicio:ms}; saveJornada(state.jornada); }
@@ -616,9 +621,15 @@
     else if(v==="nueva"){
       title.textContent="Nueva partida";
       var m=state.setup.modo, slots=m, tor=state.setup.torneo, ap=state.setup.apuesta;
-      var lw=state.lastWinner;
+      var lw=state.lastWinner, lm=state.lastMatch;
       var repeatCard = lw ? '<div class="repeatcard" data-action="repeat:apply"><span class="rc-ic">↻</span>'+
         '<div class="rc-txt"><b>Repetir equipo ganador</b><span>'+esc(lw.winInfo.map(function(x){return x.nombre;}).join(" · "))+'</span></div></div>' : '';
+      if(lm){
+        var nA=(lm.teams[0]||[]).map(function(x){return x.nombre;}).join(" · ");
+        var nB=(lm.teams[1]||[]).map(function(x){return x.nombre;}).join(" · ");
+        repeatCard += '<div class="repeatcard" data-action="match:apply"><span class="rc-ic">⇄</span>'+
+          '<div class="rc-txt"><b>Repetir partido</b><span>'+esc(nA)+' vs '+esc(nB)+'</span></div></div>';
+      }
       var html='<div class="scroll">'+
         repeatCard+
         '<div class="label">Torneo</div>'+
@@ -797,14 +808,14 @@
     var rset=null;
     if(state.setup.torneo && state.setup.torneo!=="Mix"){ rset={}; rosterNames(state.setup.torneo).forEach(function(n){ rset[n]=1; }); }
     var list=state.players.filter(function(p){
+      if(taken.indexOf(p.id)>=0) return false;   // ya elegido → sacarlo de la lista (más corta, más fácil de buscar)
       if(rset && !rset[p.nombre+" "+p.apellido]) return false;
       return !q || norm2(fullname(p)).indexOf(q)>=0;
     });
     var items='';
     list.forEach(function(p){
-      var dis=taken.indexOf(p.id)>=0;
-      items+='<div class="pitem'+(dis?' dis':'')+'" '+(dis?'':'data-action="sheet:pick" data-id="'+p.id+'"')+'>'+
-        '<span style="color:#cdbf9a">'+ic("user",18)+'</span><span>'+esc(fullname(p))+'</span>'+(dis?'<span class="tag">ya en juego</span>':'')+'</div>';
+      items+='<div class="pitem" data-action="sheet:pick" data-id="'+p.id+'">'+
+        '<span style="color:#cdbf9a">'+ic("user",18)+'</span><span>'+esc(fullname(p))+'</span></div>';
     });
     var txt=state.search.trim();
     var addRow = txt
@@ -820,6 +831,21 @@
   }
   function closeScrim(){ var sc=$("#scrim"); sc.classList.remove("show"); state.sheet=null; setTimeout(function(){ if(!sc.classList.contains("show")) sc.innerHTML=""; },60); }
 
+  // Al tocar "Nuevo partido" con una partida en curso: preguntar si hubo ganador (y completarlo a 30) o descartar.
+  function newMatchModal(){
+    var g=state.active; if(!g) return;
+    var sc=$("#scrim");
+    var n1=g.teams[0].map(function(id){return esc(player(id).nombre);}).join(" · ");
+    var n2=g.teams[1].map(function(id){return esc(player(id).nombre);}).join(" · ");
+    sc.innerHTML='<div class="modal"><h2 style="font-size:20px;margin-top:0">¿Terminó esta partida?</h2>'+
+      '<p>Va <b>'+g.score[0]+' a '+g.score[1]+'</b>. Si hubo ganador lo completo a 30 y lo guardo; si no, lo descarto.</p>'+
+      '<div class="estack" style="margin-top:4px">'+
+        '<button class="primary" data-action="newmatch:win" data-w="0">Ganó Nos'+(n1?' ('+n1+')':'')+'</button>'+
+        '<button class="primary" data-action="newmatch:win" data-w="1">Ganó Ellos'+(n2?' ('+n2+')':'')+'</button>'+
+        '<button class="ghost danger" data-action="newmatch:discard">No hubo ganador — descartar</button>'+
+      '</div></div>';
+    sc.classList.add("show");
+  }
   function montoPartida(g,w){ var esDoble=g.score[1-w]<15; return {esDoble:esDoble, monto:esDoble?g.apuesta.doble:g.apuesta.simple}; }
   function winnerModal(w){
     var g=state.active;
@@ -879,12 +905,29 @@
     var preset=(apuesta.simple===5000&&apuesta.doble===10000)?"p5":(apuesta.simple===10000&&apuesta.doble===20000)?"p10":"custom";
     state.setup={ torneo:torneo, modo:modo, teams:teams, apuesta:{preset:preset, simple:apuesta.simple, doble:apuesta.doble} };
   }
+  // Precarga los DOS equipos de la última partida (revancha con los mismos).
+  function prepareMatch(lm){
+    var teams=[[],[]];
+    for(var i=0;i<lm.modo;i++){ teams[0].push(null); teams[1].push(null); }
+    [0,1].forEach(function(ti){
+      (lm.teams[ti]||[]).forEach(function(wi,k){
+        if(k>=lm.modo) return;
+        var key=norm2((wi.nombre+" "+(wi.apellido||"")).trim());
+        var ex=state.players.find(function(p){ return norm2(fullname(p))===key; });
+        teams[ti][k]= ex ? ex.id : null;
+      });
+    });
+    var ap=lm.apuesta, preset=(ap.simple===5000&&ap.doble===10000)?"p5":(ap.simple===10000&&ap.doble===20000)?"p10":"custom";
+    state.setup={ torneo:lm.torneo, modo:lm.modo, teams:teams, apuesta:{preset:preset, simple:ap.simple, doble:ap.doble} };
+  }
   function finalize(w){
     if(state.guardando || !state.active) return;   // candado anti-doble-toque: nunca guardar la misma partida dos veces
     var g=state.active, mp=montoPartida(g,w);
     function pp(id){ var p=player(id); return p.nuevo ? {nombre:p.nombre,apellido:p.apellido} : {id:p.id,nombre:p.nombre,apellido:p.apellido}; }
     // capturar nombres del ganador ANTES de guardar (los nuevos cambian de id tmp→real al refrescar)
-    var winInfo=g.teams[w].map(function(id){ var p=player(id); return {nombre:p.nombre, apellido:p.apellido}; });
+    function info(id){ var p=player(id); return {nombre:p.nombre, apellido:p.apellido}; }
+    var winInfo=g.teams[w].map(info);
+    var bothTeams=[g.teams[0].map(info), g.teams[1].map(info)];   // los dos equipos, para "Repetir partido"
     var modo=g.modo, torneo=g.torneo, apuesta={simple:g.apuesta.simple, doble:g.apuesta.doble};
     var payload={ action:"guardar_partida", torneo:g.torneo||"", modo:g.modo+"v"+g.modo, ganador:w+1,
       puntos:g.score[0]+" a "+g.score[1],
@@ -900,6 +943,7 @@
         state.active=null; closeScrim();
         // recordar el equipo ganador para ofrecer "Repetir equipo ganador" al armar la próxima partida
         state.lastWinner={ winInfo:winInfo, w:w, modo:modo, torneo:torneo, apuesta:apuesta }; saveLastWin();
+        state.lastMatch={ teams:bothTeams, modo:modo, torneo:torneo, apuesta:apuesta }; saveLastMatch();
         state.rankScope=(tor==="Famosa"||tor==="Telaso")?tor:"global"; state.view="ranking"; render(); }
       else { state.errorMsg=(d&&d.error)?("Error: "+d.error):"No se pudo guardar"; winnerModal(w); }
     }).catch(function(){ state.guardando=false; state.errorMsg="Sin conexión — no se guardó"; winnerModal(w); });
@@ -941,10 +985,13 @@
       var g=state.active; if(!g) return; g.score[ti]=Math.max(0,Math.min(LIMIT,g.score[ti]+d)); render();
       if(g.score[ti]>=LIMIT) winnerModal(ti); return; }
     if(a==="discard"){ state.active=null; closeScrim(); state.view="anotador"; return render(); }
-    if(a==="nuevo:partido"){ state.active=null; state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; state.view="nueva"; return render(); }
+    if(a==="nuevo:partido"){ var ga=state.active; if(ga && (ga.score[0]>0 || ga.score[1]>0)) return newMatchModal(); state.active=null; state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; state.view="nueva"; return render(); }
+    if(a==="newmatch:win"){ var nw=+t.getAttribute("data-w"); closeScrim(); if(state.active){ state.active.score[nw]=LIMIT; render(); winnerModal(nw); } return; }
+    if(a==="newmatch:discard"){ state.active=null; state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; closeScrim(); state.view="nueva"; return render(); }
     if(a==="quick:reset"){ state.quick.score=[0,0]; saveQuick(); closeScrim(); state.view="tanteador"; return render(); }
     if(a==="finalize"){ return finalize(+t.getAttribute("data-w")); }
     if(a==="repeat:apply"){ var lw=state.lastWinner; if(lw){ prepareRepeat(lw.winInfo, lw.w, lw.modo, lw.torneo, lw.apuesta); } state.view="nueva"; return render(); }
+    if(a==="match:apply"){ var lm=state.lastMatch; if(lm){ prepareMatch(lm); } state.view="nueva"; return render(); }
     if(a==="rank:sort"){ state.rankSort=t.getAttribute("data-k"); return render(); }
     if(a==="rank:scope"){ state.rankScope=t.getAttribute("data-sc"); return render(); }
     if(a==="reload"){ return cargar(); }
@@ -965,6 +1012,7 @@
 
   state.quick=loadQuick();       // tanteador rápido persistido
   state.lastWinner=loadLastWin(); // último equipo ganador para "Repetir equipo ganador"
+  state.lastMatch=loadLastMatch(); // última partida completa para "Repetir partido"
   state.jornada=loadJornada();   // caché instantánea (el servidor reconcilia al cargar)
   cargar();
 })();
