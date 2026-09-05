@@ -102,6 +102,18 @@
   .repeatcard .rc-txt{ display:flex; flex-direction:column; min-width:0; }
   .repeatcard .rc-txt b{ color:#f0e2b6; font-size:15px; font-weight:600; }
   .repeatcard .rc-txt span{ color:#cdbf9a; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  /* ---- Jugadores ---- */
+  .jug-list{ display:flex; flex-direction:column; }
+  .jug-row{ display:flex; align-items:center; gap:8px; padding:10px 4px; border-bottom:1px solid rgba(176,141,46,0.18); }
+  .jug-main{ flex:1; min-width:0; }
+  .jug-name{ font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .jug-sub{ font-size:11px; color:#9c8a63; margin-top:2px; }
+  .jug-chips{ display:flex; gap:5px; flex:0 0 auto; }
+  .jchip{ padding:4px 9px; border-radius:14px; border:1px solid #6e5024; color:#9c8a63; font-size:11px; background:rgba(0,0,0,0.2); }
+  .jchip.on{ border-color:var(--gold); color:#f0e2b6; background:rgba(216,181,62,0.22); font-weight:600; }
+  .jchip.big{ padding:9px 14px; font-size:13px; }
+  .jug-btn{ width:34px; height:34px; border-radius:50%; border:1px solid var(--gold-soft); background:transparent; color:#cdbf9a; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+  .jug-btn.del{ border-color:#c0392b; color:#e08b80; }
 
   /* ---- Nueva partida ---- */
   .label{ color:#e7d6a8; font-size:13px; margin:0 0 8px 2px; }
@@ -265,7 +277,8 @@
     arrow:'<path d="M5 12h14M13 6l6 6l-6 6"/>',
     cal:'<rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M3.5 9h17M8 3v4M16 3v4"/>',
     back:'<path d="M19 12H5M11 6l-6 6l6 6"/>',
-    tally:'<path d="M6 4v16M11 4v16M16 4v16M3 20L21 4"/>'
+    tally:'<path d="M6 4v16M11 4v16M16 4v16M3 20L21 4"/>',
+    edit:'<path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>'
   };
   function ic(n,sz){ sz=sz||22; return '<svg class="icn" viewBox="0 0 24 24" width="'+sz+'" height="'+sz+'" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+ICON[n]+'</svg>'; }
   var API_URL="https://script.google.com/macros/s/AKfycbxG82ZhM4mRR5a-UXmzy-3-f6VEYGfTgTnK2_Dz2qW5BX6vnudykW9b7A9s8VQgXjN0iA/exec";
@@ -281,6 +294,7 @@
     quick:{score:[0,0]},   // tanteador rápido (local, sin jornada ni guardado)
     lastWinner:null,       // último equipo ganador (para "Repetir equipo ganador" al armar nueva partida)
     lastMatch:null,        // última partida completa (los dos equipos) para "Repetir partido"
+    jugSearch:"", jugMsg:"",   // pantalla Jugadores: buscador y mensaje (error/aviso)
     jornadaSel:null,       // jid en pantalla de detalle
     jornadaBusy:false,     // abriendo/cerrando jornada contra el servidor
     confirm:null,          // {msg, action, id} para el modal de confirmación
@@ -479,9 +493,36 @@
   }
 
   /* ---------- API (Google Sheets) ---------- */
-  function mapJug(arr){ return (arr||[]).map(function(j){ return {id:j.id_jugador, nombre:j.nombre, apellido:j.apellido, pj:Number(j.jugados)||0, g:Number(j.ganados)||0}; }); }
+  // torneos = etiquetas del jugador (ej ["Telaso","Famosa"]) — una persona, varias etiquetas. Fuente única: la base.
+  function mapJug(arr){ return (arr||[]).map(function(j){ return {id:j.id_jugador, nombre:j.nombre, apellido:j.apellido, pj:Number(j.jugados)||0, g:Number(j.ganados)||0,
+    torneos:String(j.etiquetas||"").split(",").map(function(s){return s.trim();}).filter(Boolean)}; }); }
   function apiGet(){ return fetch(API_URL+"?token="+encodeURIComponent(API_TOKEN)+"&_="+Date.now()).then(function(r){return r.json();}); }
   function apiPost(p){ p.token=API_TOKEN; return fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(p)}).then(function(r){return r.json();}); }
+
+  /* ---------- En vivo: el teléfono que anota publica el marcador; el espectador lo lee cada 4 s ---------- */
+  var liveTimer=null, liveIntv=null;
+  function liveId(){ return String(Date.now())+Math.random().toString(36).slice(2,7); }
+  // Publica el marcador actual (con debounce para no mandar un POST por cada toque rápido).
+  function livePush(){
+    var g=state.active; if(!g||!g.liveId) return;
+    clearTimeout(liveTimer);
+    liveTimer=setTimeout(function(){
+      var gg=state.active; if(!gg||gg.liveId!==g.liveId) return;
+      var n=function(t){ return t.map(function(id){ var p=player(id); return p?p.nombre:String(id); }).join(", "); };
+      apiPost({action:"live_set", live_id:gg.liveId, equipo_1:n(gg.teams[0]), equipo_2:n(gg.teams[1]),
+        score_1:gg.score[0], score_2:gg.score[1], torneo:gg.torneo||"", modo:gg.modo+"v"+gg.modo,
+        jornada: state.jornada?state.jornada.id:""}).catch(function(){});
+    }, 400);
+  }
+  function liveClear(id){ if(!id) return; clearTimeout(liveTimer); apiPost({action:"live_clear", live_id:id}).catch(function(){}); }
+  // Espectador: trae solo los partidos en curso (modo liviano) y re-renderiza si sigue en "En vivo".
+  function liveFetch(){
+    fetch(API_URL+"?token="+encodeURIComponent(API_TOKEN)+"&live=1&_="+Date.now()).then(function(r){return r.json();}).then(function(d){
+      state.enVivoCargado=true;
+      if(d&&d.ok) state.enVivo=d.en_vivo||[];
+      if(state.view==="envivo") render();
+    }).catch(function(){ state.enVivoCargado=true; if(state.view==="envivo") render(); });
+  }
   function cargar(){
     state.cargando=true; state.errorMsg=""; render();
     apiGet().then(function(d){
@@ -496,21 +537,8 @@
   }
 
   /* ---------- Torneos (rosters precargados) ---------- */
-  var TORNEOS={
-    Telaso:["Mariano Barisch","Guido Jude","Tomi Couriel","Marto Fridman","Tochu Wilhelm","Lucas Doberti","Bran Serebriani","Sebo Hochbaum","Toto Leker","Bata Burst"],
-    Famosa:["Mariano Barisch","Guido Jude","Maro Faiman","Luki Gamar","Rifle Alfie","Tano Scolnik","Diego Kestel","Garo Getjman","Maxi Abuaf","Toto Leker","Fede Levin","Alu Fainsod","Ari Bolto","Alan Kronik","Nana Zylber","Sega Schor"]
-  };
-  function rosterNames(tn){
-    if(tn==="Mix"){ var s=TORNEOS.Telaso.concat(TORNEOS.Famosa), seen={}, out=[]; s.forEach(function(n){ if(!seen[n]){ seen[n]=1; out.push(n); } }); return out; }
-    return TORNEOS[tn]||[];
-  }
-  function cargarRoster(tn){
-    rosterNames(tn).forEach(function(full){
-      var i=full.indexOf(" "); var nom=i<0?full:full.slice(0,i); var ape=i<0?"":full.slice(i+1);
-      var ex=state.players.some(function(p){ return norm2(fullname(p))===norm2(full); });
-      if(!ex){ state.players.push({id:"tmp"+(state.nextId++), nombre:nom, apellido:ape, pj:0, g:0, nuevo:true}); }
-    });
-  }
+  // Los rosters ya NO viven en el código: cada jugador tiene sus etiquetas (Telaso/Famosa) en la base (fuente única).
+  var TORNEO_TAGS=["Telaso","Famosa"];
 
   /* ---------- fósforos ---------- */
   function squareSVG(n){
@@ -532,20 +560,20 @@
   // 3 lugares fijos por mitad: cada cuadrado siempre en su posición (como anotador real)
   function slotsHTML(pts){ var out=''; for(var s=0;s<3;s++){ var base=s*5; var n = pts>=base+5 ? 5 : (pts>base ? pts-base : 0); out+='<div class="slot-sq">'+(n>0?squareSVG(n):'')+'</div>'; } return out; }
   // Tablero visual (madera + fósforos + +/− + tocar el lado). Reusado por la partida y el tanteador rápido.
-  function boardHTML(score, n1, n2){
+  function boardHTML(score, n1, n2, ro){   // ro=true → solo lectura (En vivo): sin tocar el lado ni +/−
     return '<div class="heads"><div><span class="nm">Nos:</span><span class="pl">'+n1+'</span></div>'+
       '<div><span class="nm">Ellos:</span><span class="pl">'+n2+'</span></div></div>'+
       '<div class="board">'+
         '<div class="score-pill"><span>'+score[0]+'</span><span style="color:var(--gold-soft)">·</span><span>'+score[1]+'</span></div>'+
         '<div class="vline"></div><div class="hline"></div>'+
-        '<div class="tapzone" data-action="plus" data-t="0" aria-label="Sumar a Nos"></div>'+
-        '<div class="tapzone tz-r" data-action="plus" data-t="1" aria-label="Sumar a Ellos"></div>'+
+        (ro?'':'<div class="tapzone" data-action="plus" data-t="0" aria-label="Sumar a Nos"></div>'+
+        '<div class="tapzone tz-r" data-action="plus" data-t="1" aria-label="Sumar a Ellos"></div>')+
         '<div class="col cnos malas">'+slotsHTML(Math.min(15,score[0]))+'</div>'+
         '<div class="col cnos buenas">'+slotsHTML(Math.max(0,score[0]-15))+'</div>'+
         '<div class="col cell malas">'+slotsHTML(Math.min(15,score[1]))+'</div>'+
         '<div class="col cell buenas">'+slotsHTML(Math.max(0,score[1]-15))+'</div>'+
-        '<div class="ctrls l"><button class="rbtn" data-action="plus" data-t="0">+</button><button class="rbtn" data-action="minus" data-t="0">−</button></div>'+
-        '<div class="ctrls r"><button class="rbtn" data-action="plus" data-t="1">+</button><button class="rbtn" data-action="minus" data-t="1">−</button></div>'+
+        (ro?'':'<div class="ctrls l"><button class="rbtn" data-action="plus" data-t="0">+</button><button class="rbtn" data-action="minus" data-t="0">−</button></div>'+
+        '<div class="ctrls r"><button class="rbtn" data-action="plus" data-t="1">+</button><button class="rbtn" data-action="minus" data-t="1">−</button></div>')+
       '</div>';
   }
 
@@ -571,6 +599,7 @@
   function render(){
     var v=state.view, view=$("#view"), bar=$("#actionbar"), title=$("#htitle"), hr=$("#hback");
     bar.className=""; bar.innerHTML=""; hr.onclick=null;
+    if(v!=="envivo" && liveIntv){ clearInterval(liveIntv); liveIntv=null; }   // al salir de "En vivo", dejar de consultar
     // Botón atrás (izquierda del header): destino según pantalla
     var backTo = v==="jornadaDet" ? "nav:jornadas" : v==="anotador" ? (state.active?"discard":null) : "nav:anotador";
     if(backTo){ hr.innerHTML=ic("back",22); hr.setAttribute("data-action",backTo); hr.style.visibility="visible"; }
@@ -616,6 +645,41 @@
       title.textContent="Tanteador";
       bar.className="nmbar"; bar.innerHTML='<button class="nmbtn" data-action="quick:reset">Reiniciar 0 – 0</button>';
       view.innerHTML=boardHTML(state.quick.score, "", "");
+    }
+
+    else if(v==="envivo"){
+      title.textContent="En vivo";
+      if(!liveIntv){ state.enVivoCargado=false; liveFetch(); liveIntv=setInterval(liveFetch, 4000); }
+      var arr=state.enVivo||[];
+      if(arr.length){
+        var lv=arr[0];   // lo normal es un partido a la vez; si hay más, se muestra el primero
+        view.innerHTML=boardHTML([Number(lv.score_1)||0, Number(lv.score_2)||0], esc(lv.equipo_1), esc(lv.equipo_2), true);
+      } else {
+        view.innerHTML='<div class="empty"><img class="logo" src="icon.svg" alt="Truco">'+
+          '<p>'+(state.enVivoCargado?'No hay ningún partido en curso ahora.':'Buscando partidos en curso…')+'</p>'+
+          '<p style="font-size:13px;color:#9c8a63">Se actualiza solo cada 4 segundos.</p></div>';
+      }
+    }
+
+    else if(v==="jugadores"){
+      title.textContent="Jugadores";
+      var jq=norm2(state.jugSearch||"");
+      var lista=state.players.filter(function(p){ return !p.nuevo && (!jq || norm2(fullname(p)).indexOf(jq)>=0); })
+        .sort(function(a,b){ return fullname(a).localeCompare(fullname(b),'es',{sensitivity:'base'}); });
+      var h='<div class="scroll">'+
+        '<div class="search" style="margin-bottom:10px"><span style="color:#9c8a63">'+ic("search",18)+'</span><input id="jugSearch" placeholder="Buscar jugador" value="'+esc(state.jugSearch||"")+'"></div>'+
+        '<button class="ghost full" data-action="jug:add" style="margin-bottom:14px">'+ic("plus",18)+' Agregar jugador</button>'+
+        (state.jugMsg?'<div class="rk-empty" style="padding:6px 0 12px;color:#e8b34a">'+esc(state.jugMsg)+'</div>':'')+
+        '<div class="label">'+lista.length+' jugador'+(lista.length===1?'':'es')+' · tocá una etiqueta para activarla/desactivarla</div><div class="jug-list">';
+      lista.forEach(function(p){
+        var chips=TORNEO_TAGS.map(function(t){ var on=(p.torneos||[]).indexOf(t)>=0; return '<span class="jchip'+(on?' on':'')+'" data-action="jug:toggle" data-id="'+p.id+'" data-tag="'+t+'">'+t+'</span>'; }).join('');
+        h+='<div class="jug-row"><div class="jug-main"><div class="jug-name">'+esc(fullname(p))+'</div><div class="jug-sub">'+p.pj+' partido'+(p.pj===1?'':'s')+'</div></div>'+
+           '<div class="jug-chips">'+chips+'</div>'+
+           '<button class="jug-btn" data-action="jug:edit" data-id="'+p.id+'" aria-label="Editar">'+ic("edit",16)+'</button>'+
+           '<button class="jug-btn del" data-action="jug:del" data-id="'+p.id+'" aria-label="Borrar"'+(p.pj>0?' style="opacity:.35"':'')+'>'+ic("trash",16)+'</button></div>';
+      });
+      h+='</div></div>'; view.innerHTML=h;
+      var si=$("#jugSearch"); if(si){ si.oninput=function(){ state.jugSearch=this.value; var pos=this.selectionStart; render(); var n=$("#jugSearch"); if(n){n.focus(); try{n.setSelectionRange(pos,pos);}catch(e){}} }; }
     }
 
     else if(v==="nueva"){
@@ -792,6 +856,8 @@
       '<div class="mtitle">Truco</div>'+
       '<div class="mitem" data-action="nav:anotador">'+ic("cards",20)+' Anotador</div>'+
       '<div class="mitem" data-action="nav:tanteador">'+ic("tally",20)+' Tanteador rápido</div>'+
+      '<div class="mitem" data-action="nav:envivo"><span class="jdot" style="display:inline-block;margin-right:2px"></span> En vivo</div>'+
+      '<div class="mitem" data-action="nav:jugadores">'+ic("user",20)+' Jugadores</div>'+
       '<div class="mitem" data-action="nav:ranking">'+ic("trophy",20)+' Ranking</div>'+
       '<div class="mitem" data-action="nav:jornadas">'+ic("cal",20)+' Jornadas</div>'+
       '<div class="mitem" data-action="scrim:close">'+ic("x",20)+' Cerrar</div></div>';
@@ -805,11 +871,10 @@
   function renderSheet(){
     var sc=$("#scrim"), q=norm2(state.search);
     var taken=chosenIds();
-    var rset=null;
-    if(state.setup.torneo && state.setup.torneo!=="Mix"){ rset={}; rosterNames(state.setup.torneo).forEach(function(n){ rset[n]=1; }); }
+    var scope=state.setup.torneo;   // Telaso/Famosa → solo los etiquetados; Mix → todos
     var list=state.players.filter(function(p){
       if(taken.indexOf(p.id)>=0) return false;   // ya elegido → sacarlo de la lista (más corta, más fácil de buscar)
-      if(rset && !rset[p.nombre+" "+p.apellido]) return false;
+      if(scope && scope!=="Mix" && !p.nuevo && (p.torneos||[]).indexOf(scope)<0) return false;   // filtra por etiqueta (los recién creados siempre se ven)
       return !q || norm2(fullname(p)).indexOf(q)>=0;
     });
     var items='';
@@ -884,6 +949,35 @@
       '<button class="del-btn" data-action="confirm:yes">'+esc(c.ok||"Borrar")+'</button></div></div>';
     sc.classList.add("show");
   }
+  /* ---------- Jugadores: alta / edición / etiquetas / baja ---------- */
+  // Modal de alta (p=null) o edición (p=jugador): nombre, apellido y etiquetas de torneo.
+  function jugModal(p){
+    var sc=$("#scrim"), tags=p?(p.torneos||[]):[];
+    var chips=TORNEO_TAGS.map(function(t){ return '<span class="jchip big'+(tags.indexOf(t)>=0?' on':'')+'" data-action="jug:mchip" data-tag="'+t+'">'+t+'</span>'; }).join('');
+    sc.innerHTML='<div class="modal"><h2 style="font-size:20px;margin-top:0">'+(p?'Editar jugador':'Nuevo jugador')+'</h2>'+
+      '<div class="apinputs" style="margin-bottom:12px"><div><div class="label">Nombre</div><div class="apin"><input id="jNombre" value="'+esc(p?p.nombre:"")+'" placeholder="Nombre"></div></div>'+
+      '<div><div class="label">Apellido</div><div class="apin"><input id="jApellido" value="'+esc(p?p.apellido:"")+'" placeholder="Apellido"></div></div></div>'+
+      '<div class="label">Torneos</div><div style="display:flex;gap:8px;margin-bottom:16px">'+chips+'</div>'+
+      '<div class="row"><button class="ghost" data-action="scrim:close">Cancelar</button>'+
+      '<button class="primary" data-action="jug:save" data-id="'+(p?p.id:"")+'">Guardar</button></div></div>';
+    sc.classList.add("show");
+    setTimeout(function(){ var i=$("#jNombre"); if(i&&!p) i.focus(); },80);
+  }
+  function guardarJugador(p){
+    var sc=$("#scrim"); sc.innerHTML='<div class="modal"><p style="margin:0">Guardando…</p></div>'; sc.classList.add("show");
+    p.action="guardar_jugador";
+    apiPost(p).then(function(d){
+      if(d&&d.ok){ state.players=mapJug(d.jugadores); state.jugMsg=""; closeScrim(); render(); }
+      else { state.jugMsg=(d&&d.error)?("Error: "+d.error):"No se pudo guardar"; closeScrim(); render(); }
+    }).catch(function(){ state.jugMsg="Sin conexión — no se guardó"; closeScrim(); render(); });
+  }
+  function borrarJugador(id){
+    var sc=$("#scrim"); sc.innerHTML='<div class="modal"><p style="margin:0">Borrando…</p></div>'; sc.classList.add("show");
+    apiPost({action:"borrar_jugador", id:id}).then(function(d){
+      if(d&&d.ok){ state.players=mapJug(d.jugadores); state.jugMsg=""; closeScrim(); render(); }
+      else { state.jugMsg=(d&&d.error==="jugo_partidas")?"No se puede borrar: ya jugó partidas. Podés editarlo.":((d&&d.error)?("Error: "+d.error):"No se pudo borrar"); closeScrim(); render(); }
+    }).catch(function(){ state.jugMsg="Sin conexión — no se borró"; closeScrim(); render(); });
+  }
   function borrarPartida(id){
     var sc=$("#scrim"); sc.innerHTML='<div class="modal"><p style="margin:0">Borrando…</p></div>'; sc.classList.add("show");
     apiPost({action:"borrar_partida", id_partida:id}).then(function(d){
@@ -922,7 +1016,7 @@
   }
   function finalize(w){
     if(state.guardando || !state.active) return;   // candado anti-doble-toque: nunca guardar la misma partida dos veces
-    var g=state.active, mp=montoPartida(g,w);
+    var g=state.active, mp=montoPartida(g,w), lid=g.liveId;
     function pp(id){ var p=player(id); return p.nuevo ? {nombre:p.nombre,apellido:p.apellido} : {id:p.id,nombre:p.nombre,apellido:p.apellido}; }
     // capturar nombres del ganador ANTES de guardar (los nuevos cambian de id tmp→real al refrescar)
     function info(id){ var p=player(id); return {nombre:p.nombre, apellido:p.apellido}; }
@@ -940,6 +1034,7 @@
       state.guardando=false;
       if(d&&d.ok){ state.players=mapJug(d.jugadores); if(d.partidas) state.partidas=d.partidas;
         if(state.jornada && d.id_partida) saveMapEntry(d.id_partida, state.jornada.id);
+        liveClear(lid);   // sacar el partido del "En vivo"
         state.active=null; closeScrim();
         // recordar el equipo ganador para ofrecer "Repetir equipo ganador" al armar la próxima partida
         state.lastWinner={ winInfo:winInfo, w:w, modo:modo, torneo:torneo, apuesta:apuesta }; saveLastWin();
@@ -956,6 +1051,7 @@
     if(a==="scrim:close") return closeScrim();
     if(a==="nav:anotador"){ closeScrim(); state.view="anotador"; return render(); }
     if(a==="nav:tanteador"){ closeScrim(); state.view="tanteador"; return render(); }
+    if(a==="nav:envivo"){ closeScrim(); state.view="envivo"; return render(); }
     if(a==="nav:ranking"){ closeScrim(); state.view="ranking"; return render(); }
     if(a==="nav:jornadas"){ closeScrim(); state.view="jornadas"; return render(); }
     if(a==="jornada:start"){ return startJornada(); }
@@ -963,7 +1059,7 @@
     if(a==="jornada:open"){ state.jornadaSel=t.getAttribute("data-jid"); state.view="jornadaDet"; return render(); }
     if(a==="del:partida"){ state.confirm={title:"Borrar partida", msg:"Se borra esta partida y se reajustan los saldos y el ranking. No se puede deshacer.", ok:"Borrar", action:"borrar_partida", id:t.getAttribute("data-id")}; return confirmModal(); }
     if(a==="confirm:no"){ state.confirm=null; return closeScrim(); }
-    if(a==="confirm:yes"){ var cf=state.confirm; state.confirm=null; if(cf&&cf.action==="borrar_partida") return borrarPartida(cf.id); return closeScrim(); }
+    if(a==="confirm:yes"){ var cf=state.confirm; state.confirm=null; if(cf&&cf.action==="borrar_partida") return borrarPartida(cf.id); if(cf&&cf.action==="borrar_jugador") return borrarJugador(cf.id); return closeScrim(); }
     if(a==="nav:nueva"){ state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; state.view="nueva"; return render(); }
     if(a==="apuesta"){ var pr=t.getAttribute("data-preset"); state.setup.apuesta.preset=pr;
       if(pr!=="custom"){ state.setup.apuesta.simple=+t.getAttribute("data-s"); state.setup.apuesta.doble=+t.getAttribute("data-d"); }
@@ -979,19 +1075,35 @@
       var chosen=ex || {id:"tmp"+(state.nextId++), nombre:nom, apellido:ape, pj:0, g:0, nuevo:true};
       if(!ex) state.players.push(chosen);
       state.setup.teams[state.sheet.t][state.sheet.s]=chosen.id; closeScrim(); return render(); }
-    if(a==="start"){ var ap=state.setup.apuesta; state.active={torneo:state.setup.torneo, modo:state.setup.modo, teams:[state.setup.teams[0].slice(),state.setup.teams[1].slice()], score:[0,0], apuesta:{simple:ap.simple, doble:ap.doble}}; state.view="anotador"; return render(); }
+    if(a==="start"){ var ap=state.setup.apuesta; state.active={torneo:state.setup.torneo, modo:state.setup.modo, teams:[state.setup.teams[0].slice(),state.setup.teams[1].slice()], score:[0,0], apuesta:{simple:ap.simple, doble:ap.doble}, liveId:liveId()}; state.view="anotador"; render(); livePush(); return; }
     if(a==="plus"||a==="minus"){ var ti=+t.getAttribute("data-t"); var d=a==="plus"?1:-1;
       if(state.view==="tanteador"){ var q=state.quick; q.score[ti]=Math.max(0,Math.min(LIMIT,q.score[ti]+d)); saveQuick(); render(); if(q.score[ti]>=LIMIT) quickWinner(ti); return; }
-      var g=state.active; if(!g) return; g.score[ti]=Math.max(0,Math.min(LIMIT,g.score[ti]+d)); render();
+      var g=state.active; if(!g) return; g.score[ti]=Math.max(0,Math.min(LIMIT,g.score[ti]+d)); render(); livePush();
       if(g.score[ti]>=LIMIT) winnerModal(ti); return; }
-    if(a==="discard"){ state.active=null; closeScrim(); state.view="anotador"; return render(); }
-    if(a==="nuevo:partido"){ var ga=state.active; if(ga && (ga.score[0]>0 || ga.score[1]>0)) return newMatchModal(); state.active=null; state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; state.view="nueva"; return render(); }
+    if(a==="discard"){ if(state.active) liveClear(state.active.liveId); state.active=null; closeScrim(); state.view="anotador"; return render(); }
+    if(a==="nuevo:partido"){ var ga=state.active; if(ga && (ga.score[0]>0 || ga.score[1]>0)) return newMatchModal(); if(ga) liveClear(ga.liveId); state.active=null; state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; state.view="nueva"; return render(); }
     if(a==="newmatch:win"){ var nw=+t.getAttribute("data-w"); closeScrim(); if(state.active){ state.active.score[nw]=LIMIT; render(); winnerModal(nw); } return; }
-    if(a==="newmatch:discard"){ state.active=null; state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; closeScrim(); state.view="nueva"; return render(); }
+    if(a==="newmatch:discard"){ if(state.active) liveClear(state.active.liveId); state.active=null; state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; closeScrim(); state.view="nueva"; return render(); }
     if(a==="quick:reset"){ state.quick.score=[0,0]; saveQuick(); closeScrim(); state.view="tanteador"; return render(); }
     if(a==="finalize"){ return finalize(+t.getAttribute("data-w")); }
     if(a==="repeat:apply"){ var lw=state.lastWinner; if(lw){ prepareRepeat(lw.winInfo, lw.w, lw.modo, lw.torneo, lw.apuesta); } state.view="nueva"; return render(); }
     if(a==="match:apply"){ var lm=state.lastMatch; if(lm){ prepareMatch(lm); } state.view="nueva"; return render(); }
+    // --- Jugadores ---
+    if(a==="nav:jugadores"){ closeScrim(); state.jugMsg=""; state.view="jugadores"; return render(); }
+    if(a==="jug:add"){ return jugModal(null); }
+    if(a==="jug:edit"){ var pe=player(t.getAttribute("data-id")); if(pe) jugModal(pe); return; }
+    if(a==="jug:mchip"){ t.classList.toggle("on"); return; }
+    if(a==="jug:save"){ var jid=t.getAttribute("data-id"), jn=($("#jNombre").value||"").trim(), ja=($("#jApellido").value||"").trim();
+      if(!jn){ $("#jNombre").focus(); return; }
+      var tg=[].map.call(document.querySelectorAll('#scrim .jchip.on'), function(c){ return c.getAttribute("data-tag"); });
+      var payload={nombre:jn, apellido:ja, etiquetas:tg.join(",")}; if(jid) payload.id=jid;
+      return guardarJugador(payload); }
+    if(a==="jug:toggle"){ var pt=player(t.getAttribute("data-id")); if(!pt) return; var tag=t.getAttribute("data-tag");
+      var cur=(pt.torneos||[]).slice(), ix=cur.indexOf(tag); if(ix>=0) cur.splice(ix,1); else cur.push(tag);
+      return guardarJugador({id:pt.id, nombre:pt.nombre, apellido:pt.apellido, etiquetas:cur.join(",")}); }
+    if(a==="jug:del"){ var pd=player(t.getAttribute("data-id")); if(!pd) return;
+      if(pd.pj>0){ state.jugMsg="No se puede borrar a "+pd.nombre+": ya jugó "+pd.pj+" partido"+(pd.pj===1?"":"s")+". Podés editarlo."; return render(); }
+      state.confirm={title:"Borrar jugador", msg:"Se borra a "+fullname(pd)+" de la base. No se puede deshacer.", ok:"Borrar", action:"borrar_jugador", id:pd.id}; return confirmModal(); }
     if(a==="rank:sort"){ state.rankSort=t.getAttribute("data-k"); return render(); }
     if(a==="rank:scope"){ state.rankScope=t.getAttribute("data-sc"); return render(); }
     if(a==="reload"){ return cargar(); }
@@ -1000,8 +1112,7 @@
     var s=e.target.closest("[data-change]"); if(!s) return;
     if(s.getAttribute("data-change")==="torneo"){
       var tn=s.value||null; state.setup.torneo=tn;
-      if(tn) cargarRoster(tn);
-      return render();   // NO borra los jugadores ya elegidos al cambiar de torneo
+      return render();   // NO borra los jugadores ya elegidos al cambiar de torneo (el buscador filtra por etiqueta)
     }
   });
   $("#scrim").addEventListener("click",function(e){ if(e.target===this) closeScrim(); });
