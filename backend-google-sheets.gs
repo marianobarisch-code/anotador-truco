@@ -24,12 +24,17 @@ const T_JUG = 'jugadores';
 const T_PAR = 'partidas';
 const T_DET = 'partidas_jugadores';
 const T_JOR = 'jornadas';
+const T_LIVE = 'en_vivo';      // partidos en curso (marcador live), una fila por partido activo
 
 // etiquetas = torneos a los que pertenece el jugador (ej "Telaso,Famosa"). Una persona = una fila.
 const H_JUG = ['id_jugador','nombre','apellido','jugados','ganados','perdidos','puntos','promedio','fecha_alta','etiquetas'];
 const H_PAR = ['id_partida','fecha','torneo','modo','equipo_1','equipo_2','ganador','puntos','apuesta_simple','apuesta_doble','monto','jornada'];
 const H_DET = ['id_partida','id_jugador','equipo','resultado'];
 const H_JOR = ['id_jornada','inicio','fin','estado'];   // estado: abierta | cerrada
+// en_vivo: marcador de un partido en curso. equipo_1/2 son NOMBRES (para mostrar), no ids.
+const H_LIVE = ['live_id','equipo_1','equipo_2','score_1','score_2','torneo','modo','jornada','actualizado'];
+const LIVE_TTL_MS = 3 * 60 * 60 * 1000;        // un partido "en vivo" vence a las 3 h sin actualizar
+const DEDUP_WINDOW_MS = 15 * 60 * 1000;        // candado: misma partida en la misma jornada dentro de 15 min = duplicado
 
 /* === Crea las pestañas con sus títulos (ejecutar una vez) === */
 function setup() {
@@ -38,6 +43,7 @@ function setup() {
   ensureSheet_(ss, T_PAR, H_PAR);
   ensureSheet_(ss, T_DET, H_DET);
   ensureSheet_(ss, T_JOR, H_JOR);
+  ensureSheet_(ss, T_LIVE, H_LIVE);
 }
 function ensureSheet_(ss, name, headers) {
   let sh = ss.getSheetByName(name);
@@ -49,6 +55,11 @@ function ensureSheet_(ss, name, headers) {
 function s_(v, max) { return String(v == null ? '' : v).trim().slice(0, max || 80); }
 function num_(v) { var n = Number(v); return isFinite(n) ? n : 0; }
 function norm_(s) { return String(s == null ? '' : s).trim().toLowerCase(); }
+// Clave de una partida para detectar duplicados: ids del ganador y del perdedor, ordenados (independiente del orden Nos/Ellos).
+function claveDup_(ganadorIds, perdedorIds) {
+  function ord(a) { return (a || []).map(function (x) { return String(x).trim(); }).filter(Boolean).sort().join(','); }
+  return ord(ganadorIds) + '|' + ord(perdedorIds);
+}
 
 // Siguiente ID robusto: max(sufijo numérico existente) + 1 (no se rompe si se borran filas).
 function nextId_(sh, prefix) {
@@ -67,11 +78,14 @@ function nextId_(sh, prefix) {
 /* === LEER (ranking + historial + jornada abierta) === */
 function doGet(e) {
   if ((e.parameter.token || '') !== TOKEN) return json_({ ok:false, error:'token' });
+  // Modo liviano para el "En vivo": solo los partidos en curso (lo consulta el espectador cada pocos segundos).
+  if (e.parameter.live) return json_({ ok:true, en_vivo: leerEnVivo_() });
   return json_({
     ok: true,
     jugadores: leerTabla_(T_JUG),
     partidas: leerTabla_(T_PAR),
-    jornada_abierta: leerJornadaAbierta_()
+    jornada_abierta: leerJornadaAbierta_(),
+    en_vivo: leerEnVivo_()
   });
 }
 
@@ -93,6 +107,8 @@ function doPost(e) {
       case 'borrar_jugador':  return json_(borrarJugador_(body));
       case 'abrir_jornada':   return json_(abrirJornada_(body));
       case 'cerrar_jornada':  return json_(cerrarJornada_(body));
+      case 'live_set':        return json_(liveSet_(body));
+      case 'live_clear':      return json_(liveClear_(body));
       default: return json_({ ok:false, error:'accion desconocida' });
     }
   } catch (err) {
@@ -128,6 +144,27 @@ function guardarPartida_(body) {
       eq[t].push(asegurarJugador_(shJ, p || {}, torneoLabel));
     });
   });
+
+  // 1b) CANDADO ANTI-DUPLICADO (servidor): si en la misma jornada ya se guardó, hace menos de 15 min,
+  //     una partida con el MISMO equipo ganador y el MISMO equipo perdedor (sin importar el orden Nos/Ellos),
+  //     no la duplica: devuelve la existente. Cubre doble carga desde dos teléfonos y reintentos.
+  var jorS = s_(body.jornada, 24);
+  var dupKey = claveDup_(eq[ganador], eq[3 - ganador]);
+  var parExist = shP.getDataRange().getValues();
+  var ahora = Date.now();
+  for (var r = parExist.length - 1; r >= 1; r--) {
+    var row = parExist[r];
+    var ts = new Date(row[1]).getTime();
+    if (isNaN(ts)) continue;
+    if (ahora - ts > DEDUP_WINDOW_MS) break;           // las filas están en orden cronológico: más viejas, cortar
+    if (String(row[11]) !== jorS) continue;
+    var rGan = String(row[6]).indexOf('2') >= 0 ? 2 : 1;
+    var rE1 = String(row[4]).split(','), rE2 = String(row[5]).split(',');
+    var rKey = claveDup_(rGan === 1 ? rE1 : rE2, rGan === 1 ? rE2 : rE1);
+    if (rKey === dupKey) {
+      return { ok:true, duplicado:true, id_partida:String(row[0]), jugadores: leerTabla_(T_JUG), partidas: leerTabla_(T_PAR) };
+    }
+  }
 
   // 2) Registrar la partida (con saneo de strings/números)
   const idPartida = nextId_(shP, 'P');
@@ -350,6 +387,55 @@ function cerrarJornada_(body) {
   return { ok:true };
 }
 
+/* ---------------- En vivo (marcador de partidos en curso) ---------------- */
+// Devuelve los partidos en curso que se actualizaron hace menos de LIVE_TTL_MS (los viejos se ignoran).
+function leerEnVivo_() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(T_LIVE);
+  if (!sh || sh.getLastRow() < 2) return [];
+  const data = sh.getDataRange().getValues();
+  var out = [], ahora = Date.now();
+  for (var i = 1; i < data.length; i++) {
+    var ts = new Date(data[i][8]).getTime();
+    if (isNaN(ts) || ahora - ts > LIVE_TTL_MS) continue;
+    out.push({ live_id:String(data[i][0]), equipo_1:String(data[i][1]), equipo_2:String(data[i][2]),
+      score_1:num_(data[i][3]), score_2:num_(data[i][4]), torneo:String(data[i][5]), modo:String(data[i][6]),
+      jornada:String(data[i][7]), actualizado:data[i][8] });
+  }
+  return out;
+}
+// Crea o actualiza el marcador de un partido en curso (upsert por live_id). Lo llama el teléfono que anota.
+function liveSet_(body) {
+  var id = s_(body.live_id, 40);
+  if (!id) return { ok:false, error:'falta live_id' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  setup();
+  const sh = ss.getSheetByName(T_LIVE);
+  var fila = [ id, s_(body.equipo_1, 120), s_(body.equipo_2, 120), num_(body.score_1), num_(body.score_2),
+               s_(body.torneo, 24), s_(body.modo, 8), s_(body.jornada, 24), new Date() ];
+  const data = sh.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === id) { sh.getRange(i + 1, 1, 1, fila.length).setValues([fila]); return { ok:true }; }
+  }
+  sh.appendRow(fila);
+  // limpieza: borrar filas vencidas (de abajo hacia arriba) para que la hoja no crezca
+  var ahora = Date.now(), d2 = sh.getDataRange().getValues();
+  for (var k = d2.length - 1; k >= 1; k--) {
+    var ts = new Date(d2[k][8]).getTime();
+    if (!isNaN(ts) && ahora - ts > LIVE_TTL_MS) sh.deleteRow(k + 1);
+  }
+  return { ok:true };
+}
+// Saca el partido del "en vivo" (al guardarlo o descartarlo).
+function liveClear_(body) {
+  var id = s_(body.live_id, 40);
+  if (!id) return { ok:false, error:'falta live_id' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(T_LIVE);
+  if (!sh || sh.getLastRow() < 2) return { ok:true };
+  const data = sh.getDataRange().getValues();
+  for (var i = data.length - 1; i >= 1; i--) if (String(data[i][0]) === id) sh.deleteRow(i + 1);
+  return { ok:true };
+}
+
 /* ---------------- Lectura genérica ---------------- */
 function leerTabla_(name) {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
@@ -368,7 +454,7 @@ function json_(obj) {
 /* === Borra TODOS los datos (deja solo encabezados). Correr desde el editor. === */
 function _reset() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  [T_JUG, T_PAR, T_DET, T_JOR].forEach(function (n) {
+  [T_JUG, T_PAR, T_DET, T_JOR, T_LIVE].forEach(function (n) {
     var sh = ss.getSheetByName(n); if (!sh) return;
     var last = sh.getLastRow();
     if (last > 1) sh.deleteRows(2, last - 1);
