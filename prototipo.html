@@ -114,6 +114,9 @@
   .jchip.big{ padding:9px 14px; font-size:13px; }
   .jug-btn{ width:34px; height:34px; border-radius:50%; border:1px solid var(--gold-soft); background:transparent; color:#cdbf9a; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
   .jug-btn.del{ border-color:#c0392b; color:#e08b80; }
+  /* estado del "En vivo" */
+  .live-status{ position:absolute; left:0; right:0; bottom:10px; text-align:center; font-size:12px; color:#7ec47e; z-index:4; pointer-events:none; }
+  .live-status.stale{ color:#e08b80; }
 
   /* ---- Nueva partida ---- */
   .label{ color:#e7d6a8; font-size:13px; margin:0 0 8px 2px; }
@@ -355,6 +358,20 @@
   var LS_LASTMATCH="truco_lastmatch_v1";
   function loadLastMatch(){ try{ var raw=localStorage.getItem(LS_LASTMATCH); if(raw){ var m=JSON.parse(raw); if(m&&m.teams&&m.teams.length===2) return m; } }catch(e){} return null; }
   function saveLastMatch(){ try{ localStorage.setItem(LS_LASTMATCH, JSON.stringify(state.lastMatch)); }catch(e){} }
+  // Partido EN CURSO persistido en el teléfono: si la app se recarga (pantalla bloqueada, cambio de app),
+  // el partido sigue ahí con su marcador y su liveId → no se pierde y sigue transmitiendo al "En vivo".
+  var LS_ACTIVE="truco_active_v1";
+  function saveActive(){ try{ var g=state.active; if(!g){ localStorage.removeItem(LS_ACTIVE); return; }
+    var ids=[].concat(g.teams[0],g.teams[1]);
+    var tmp=state.players.filter(function(p){ return p.nuevo && ids.indexOf(p.id)>=0; });   // los creados a mano viven solo en memoria
+    var o={}; for(var k in g) o[k]=g[k]; o.tmpPlayers=tmp; localStorage.setItem(LS_ACTIVE, JSON.stringify(o)); }catch(e){} }
+  function clearActive(){ try{ localStorage.removeItem(LS_ACTIVE); }catch(e){} }
+  function loadActive(){ try{ var raw=localStorage.getItem(LS_ACTIVE); if(!raw) return null; var g=JSON.parse(raw);
+    if(!g||!g.teams||g.teams.length!==2||!g.score) return null; if(!g.liveId) g.liveId=liveId(); return g; }catch(e){ return null; } }
+  // Reinyecta en state.players los jugadores temporales del partido en curso (tras recarga o tras refrescar desde el servidor).
+  function ensureTmpPlayers(){ var g=state.active; if(!g||!g.tmpPlayers) return;
+    g.tmpPlayers.forEach(function(tp){ if(!state.players.some(function(p){ return p.id===tp.id; })) state.players.push(tp);
+      var n=parseInt(String(tp.id).replace("tmp",""),10); if(!isNaN(n) && n>=state.nextId) state.nextId=n+1; }); }
   // La jornada abierta es del SERVIDOR (compartida entre todos). El localStorage es solo caché para UI instantánea/offline.
   function setJornada(srv){ var ms=new Date(srv.inicio).getTime(); if(isNaN(ms)) ms=Number(srv.id)||Date.now();
     state.jornada={id:String(srv.id), inicio:ms}; saveJornada(state.jornada); }
@@ -526,7 +543,7 @@
   function cargar(){
     state.cargando=true; state.errorMsg=""; render();
     apiGet().then(function(d){
-      if(d&&d.ok){ state.players=mapJug(d.jugadores); state.partidas=d.partidas||[];
+      if(d&&d.ok){ state.players=mapJug(d.jugadores); state.partidas=d.partidas||[]; ensureTmpPlayers();
         // jornada abierta: el servidor manda (compartida entre todos)
         if(d.jornada_abierta){ setJornada(d.jornada_abierta); } else { state.jornada=null; saveJornada(null); }
         autoCerrarSiVence();
@@ -634,8 +651,8 @@
         view.innerHTML='<div class="empty"><img class="logo" src="icon.svg" alt="Truco">'+inner+'</div>';
       }else{
         var g=state.active;
-        var n1=g.teams[0].map(function(id){return esc(player(id).nombre);}).join(" · ");
-        var n2=g.teams[1].map(function(id){return esc(player(id).nombre);}).join(" · ");
+        var n1=g.teams[0].map(function(id){ var p=player(id); return p?esc(p.nombre):"?"; }).join(" · ");
+        var n2=g.teams[1].map(function(id){ var p=player(id); return p?esc(p.nombre):"?"; }).join(" · ");
         bar.className="nmbar"; bar.innerHTML='<button class="nmbtn" data-action="nuevo:partido">Nuevo partido</button>';
         view.innerHTML=boardHTML(g.score, n1, n2);
       }
@@ -650,10 +667,15 @@
     else if(v==="envivo"){
       title.textContent="En vivo";
       if(!liveIntv){ state.enVivoCargado=false; liveFetch(); liveIntv=setInterval(liveFetch, 4000); }
-      var arr=state.enVivo||[];
+      var ahora=Date.now();
+      var arr=(state.enVivo||[]).map(function(x){ x._age=Math.max(0,(ahora-new Date(x.actualizado).getTime())/1000); return x; })
+        .filter(function(x){ return isFinite(x._age) && x._age<20*60; })          // colgados de >20 min no se muestran
+        .sort(function(a,b){ return a._age-b._age; });                            // el más reciente primero
       if(arr.length){
-        var lv=arr[0];   // lo normal es un partido a la vez; si hay más, se muestra el primero
-        view.innerHTML=boardHTML([Number(lv.score_1)||0, Number(lv.score_2)||0], esc(lv.equipo_1), esc(lv.equipo_2), true);
+        var lv=arr[0], age=Math.round(lv._age), stale=age>120;
+        var txt = stale ? "⚠️ Sin señal hace "+(age<3600?Math.round(age/60)+" min":Math.round(age/3600)+" h") : "● En vivo · actualizado hace "+(age<5?"un instante":age+" s");
+        view.innerHTML=boardHTML([Number(lv.score_1)||0, Number(lv.score_2)||0], esc(lv.equipo_1), esc(lv.equipo_2), true)+
+          '<div class="live-status'+(stale?' stale':'')+'">'+txt+(arr.length>1?' · +'+(arr.length-1)+' más':'')+'</div>';
       } else {
         view.innerHTML='<div class="empty"><img class="logo" src="icon.svg" alt="Truco">'+
           '<p>'+(state.enVivoCargado?'No hay ningún partido en curso ahora.':'Buscando partidos en curso…')+'</p>'+
@@ -900,8 +922,8 @@
   function newMatchModal(){
     var g=state.active; if(!g) return;
     var sc=$("#scrim");
-    var n1=g.teams[0].map(function(id){return esc(player(id).nombre);}).join(" · ");
-    var n2=g.teams[1].map(function(id){return esc(player(id).nombre);}).join(" · ");
+    var n1=g.teams[0].map(function(id){ var p=player(id); return p?esc(p.nombre):"?"; }).join(" · ");
+    var n2=g.teams[1].map(function(id){ var p=player(id); return p?esc(p.nombre):"?"; }).join(" · ");
     sc.innerHTML='<div class="modal"><h2 style="font-size:20px;margin-top:0">¿Terminó esta partida?</h2>'+
       '<p>Va <b>'+g.score[0]+' a '+g.score[1]+'</b>. Si hubo ganador lo completo a 30 y lo guardo; si no, lo descarto.</p>'+
       '<div class="estack" style="margin-top:4px">'+
@@ -914,7 +936,7 @@
   function montoPartida(g,w){ var esDoble=g.score[1-w]<15; return {esDoble:esDoble, monto:esDoble?g.apuesta.doble:g.apuesta.simple}; }
   function winnerModal(w){
     var g=state.active;
-    var names=g.teams[w].map(function(id){return esc(player(id).nombre);}).join(", ");
+    var names=g.teams[w].map(function(id){ var p=player(id); return p?esc(p.nombre):"?"; }).join(", ");
     var sc=$("#scrim");
     var mp=montoPartida(g,w);
     var montoLine='<p style="margin:0 0 14px;font-size:15px;color:'+(mp.esDoble?"#7ec47e":"#e7d6a8")+'">'+
@@ -981,7 +1003,7 @@
   function borrarPartida(id){
     var sc=$("#scrim"); sc.innerHTML='<div class="modal"><p style="margin:0">Borrando…</p></div>'; sc.classList.add("show");
     apiPost({action:"borrar_partida", id_partida:id}).then(function(d){
-      if(d&&d.ok){ state.players=mapJug(d.jugadores); state.partidas=d.partidas||[]; state.errorMsg=""; closeScrim(); render(); }
+      if(d&&d.ok){ state.players=mapJug(d.jugadores); state.partidas=d.partidas||[]; ensureTmpPlayers(); state.errorMsg=""; closeScrim(); render(); }
       else { state.errorMsg=(d&&d.error)?("Error: "+d.error):"No se pudo borrar"; closeScrim(); render(); }
     }).catch(function(){ state.errorMsg="Sin conexión — no se borró"; closeScrim(); render(); });
   }
@@ -1017,9 +1039,9 @@
   function finalize(w){
     if(state.guardando || !state.active) return;   // candado anti-doble-toque: nunca guardar la misma partida dos veces
     var g=state.active, mp=montoPartida(g,w), lid=g.liveId;
-    function pp(id){ var p=player(id); return p.nuevo ? {nombre:p.nombre,apellido:p.apellido} : {id:p.id,nombre:p.nombre,apellido:p.apellido}; }
+    function pp(id){ var p=player(id)||{nombre:String(id),apellido:"",nuevo:true}; return p.nuevo ? {nombre:p.nombre,apellido:p.apellido} : {id:p.id,nombre:p.nombre,apellido:p.apellido}; }
     // capturar nombres del ganador ANTES de guardar (los nuevos cambian de id tmp→real al refrescar)
-    function info(id){ var p=player(id); return {nombre:p.nombre, apellido:p.apellido}; }
+    function info(id){ var p=player(id)||{nombre:String(id),apellido:""}; return {nombre:p.nombre, apellido:p.apellido}; }
     var winInfo=g.teams[w].map(info);
     var bothTeams=[g.teams[0].map(info), g.teams[1].map(info)];   // los dos equipos, para "Repetir partido"
     var modo=g.modo, torneo=g.torneo, apuesta={simple:g.apuesta.simple, doble:g.apuesta.doble};
@@ -1034,7 +1056,7 @@
       state.guardando=false;
       if(d&&d.ok){ state.players=mapJug(d.jugadores); if(d.partidas) state.partidas=d.partidas;
         if(state.jornada && d.id_partida) saveMapEntry(d.id_partida, state.jornada.id);
-        liveClear(lid);   // sacar el partido del "En vivo"
+        liveClear(lid); clearActive();   // sacar el partido del "En vivo" y del teléfono
         state.active=null; closeScrim();
         // recordar el equipo ganador para ofrecer "Repetir equipo ganador" al armar la próxima partida
         state.lastWinner={ winInfo:winInfo, w:w, modo:modo, torneo:torneo, apuesta:apuesta }; saveLastWin();
@@ -1075,15 +1097,15 @@
       var chosen=ex || {id:"tmp"+(state.nextId++), nombre:nom, apellido:ape, pj:0, g:0, nuevo:true};
       if(!ex) state.players.push(chosen);
       state.setup.teams[state.sheet.t][state.sheet.s]=chosen.id; closeScrim(); return render(); }
-    if(a==="start"){ var ap=state.setup.apuesta; state.active={torneo:state.setup.torneo, modo:state.setup.modo, teams:[state.setup.teams[0].slice(),state.setup.teams[1].slice()], score:[0,0], apuesta:{simple:ap.simple, doble:ap.doble}, liveId:liveId()}; state.view="anotador"; render(); livePush(); return; }
+    if(a==="start"){ var ap=state.setup.apuesta; state.active={torneo:state.setup.torneo, modo:state.setup.modo, teams:[state.setup.teams[0].slice(),state.setup.teams[1].slice()], score:[0,0], apuesta:{simple:ap.simple, doble:ap.doble}, liveId:liveId()}; saveActive(); state.view="anotador"; render(); livePush(); return; }
     if(a==="plus"||a==="minus"){ var ti=+t.getAttribute("data-t"); var d=a==="plus"?1:-1;
       if(state.view==="tanteador"){ var q=state.quick; q.score[ti]=Math.max(0,Math.min(LIMIT,q.score[ti]+d)); saveQuick(); render(); if(q.score[ti]>=LIMIT) quickWinner(ti); return; }
-      var g=state.active; if(!g) return; g.score[ti]=Math.max(0,Math.min(LIMIT,g.score[ti]+d)); render(); livePush();
+      var g=state.active; if(!g) return; g.score[ti]=Math.max(0,Math.min(LIMIT,g.score[ti]+d)); saveActive(); render(); livePush();
       if(g.score[ti]>=LIMIT) winnerModal(ti); return; }
-    if(a==="discard"){ if(state.active) liveClear(state.active.liveId); state.active=null; closeScrim(); state.view="anotador"; return render(); }
-    if(a==="nuevo:partido"){ var ga=state.active; if(ga && (ga.score[0]>0 || ga.score[1]>0)) return newMatchModal(); if(ga) liveClear(ga.liveId); state.active=null; state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; state.view="nueva"; return render(); }
-    if(a==="newmatch:win"){ var nw=+t.getAttribute("data-w"); closeScrim(); if(state.active){ state.active.score[nw]=LIMIT; render(); winnerModal(nw); } return; }
-    if(a==="newmatch:discard"){ if(state.active) liveClear(state.active.liveId); state.active=null; state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; closeScrim(); state.view="nueva"; return render(); }
+    if(a==="discard"){ if(state.active) liveClear(state.active.liveId); state.active=null; clearActive(); closeScrim(); state.view="anotador"; return render(); }
+    if(a==="nuevo:partido"){ var ga=state.active; if(ga && (ga.score[0]>0 || ga.score[1]>0)) return newMatchModal(); if(ga) liveClear(ga.liveId); state.active=null; clearActive(); state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; state.view="nueva"; return render(); }
+    if(a==="newmatch:win"){ var nw=+t.getAttribute("data-w"); closeScrim(); if(state.active){ state.active.score[nw]=LIMIT; saveActive(); render(); winnerModal(nw); } return; }
+    if(a==="newmatch:discard"){ if(state.active) liveClear(state.active.liveId); state.active=null; clearActive(); state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; closeScrim(); state.view="nueva"; return render(); }
     if(a==="quick:reset"){ state.quick.score=[0,0]; saveQuick(); closeScrim(); state.view="tanteador"; return render(); }
     if(a==="finalize"){ return finalize(+t.getAttribute("data-w")); }
     if(a==="repeat:apply"){ var lw=state.lastWinner; if(lw){ prepareRepeat(lw.winInfo, lw.w, lw.modo, lw.torneo, lw.apuesta); } state.view="nueva"; return render(); }
@@ -1119,11 +1141,17 @@
 
   // Cierre automático de la jornada a las 6 AM aunque la app quede abierta (timer + al volver a foco).
   setInterval(function(){ if(autoCerrarSiVence()) render(); }, 60000);
-  document.addEventListener("visibilitychange", function(){ if(!document.hidden && autoCerrarSiVence()) render(); });
+  document.addEventListener("visibilitychange", function(){ if(document.hidden) return;
+    if(autoCerrarSiVence()) render();
+    if(state.active && state.active.liveId) livePush();      // el que anota: re-manda el marcador al volver
+    if(state.view==="envivo") liveFetch();                    // el que mira: re-consulta al instante
+  });
+  setInterval(function(){ if(state.active && state.active.liveId) livePush(); }, 45000);   // latido: el marcador sigue "vivo" aunque no toques
 
   state.quick=loadQuick();       // tanteador rápido persistido
   state.lastWinner=loadLastWin(); // último equipo ganador para "Repetir equipo ganador"
   state.lastMatch=loadLastMatch(); // última partida completa para "Repetir partido"
+  state.active=loadActive(); ensureTmpPlayers();   // partido en curso (sobrevive recargas)
   state.jornada=loadJornada();   // caché instantánea (el servidor reconcilia al cargar)
   cargar();
 })();
