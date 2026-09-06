@@ -33,7 +33,7 @@ const H_DET = ['id_partida','id_jugador','equipo','resultado'];
 const H_JOR = ['id_jornada','inicio','fin','estado'];   // estado: abierta | cerrada
 // en_vivo: marcador de un partido en curso. equipo_1/2 son NOMBRES (para mostrar), no ids.
 const H_LIVE = ['live_id','equipo_1','equipo_2','score_1','score_2','torneo','modo','jornada','actualizado'];
-const LIVE_TTL_MS = 3 * 60 * 60 * 1000;        // un partido "en vivo" vence a las 3 h sin actualizar
+const LIVE_TTL_MS = 20 * 60 * 1000;            // un partido "en vivo" vence a los 20 min sin actualizar (el teléfono manda latido cada 45 s)
 const DEDUP_WINDOW_MS = 15 * 60 * 1000;        // candado: misma partida en la misma jornada dentro de 15 min = duplicado
 
 /* === Crea las pestañas con sus títulos (ejecutar una vez) === */
@@ -345,12 +345,27 @@ function actualizarMetricas_(shJ, id, dGan, dPer, dJug) {
 }
 
 /* ---------------- Jornadas (sesiones compartidas) ---------------- */
+// Vencimiento de una jornada: las próximas 6:00 AM (hora Argentina) después de su inicio.
+// Misma regla que la app; el servidor la aplica también para que no dependa de que alguien abra la app.
+function venceJornada_(inicioVal) {
+  var tz = 'America/Argentina/Buenos_Aires', d = new Date(inicioVal);
+  if (isNaN(d.getTime())) return null;
+  var h = Number(Utilities.formatDate(d, tz, 'H'));
+  var dia = new Date(d.getTime() + (h < 6 ? 0 : 24 * 3600 * 1000));      // hoy si es antes de las 6, si no mañana
+  var ymd = Utilities.formatDate(dia, tz, 'yyyy-MM-dd'), z = Utilities.formatDate(dia, tz, 'Z');   // ej -0300
+  return new Date(ymd + 'T06:00:00' + z.slice(0, 3) + ':' + z.slice(3)).getTime();
+}
 function leerJornadaAbierta_() {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(T_JOR);
   if (!sh || sh.getLastRow() < 2) return null;
   const data = sh.getDataRange().getValues();
   for (var i = 1; i < data.length; i++) {
     if (String(data[i][3]) === 'abierta') {
+      var vence = venceJornada_(data[i][1]);
+      if (vence && Date.now() >= vence) {                                    // ya pasaron las 6 AM: el servidor la cierra solo
+        try { sh.getRange(i + 1, 3, 1, 2).setValues([[ new Date(vence), 'cerrada' ]]); } catch (e) {}
+        continue;
+      }
       return { id: String(data[i][0]), inicio: data[i][1] };
     }
   }
