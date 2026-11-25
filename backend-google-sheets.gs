@@ -28,11 +28,11 @@ const T_LIVE = 'en_vivo';      // partidos en curso (marcador live), una fila po
 
 // etiquetas = torneos a los que pertenece el jugador (ej "Telaso,Famosa"). Una persona = una fila.
 const H_JUG = ['id_jugador','nombre','apellido','jugados','ganados','perdidos','puntos','promedio','fecha_alta','etiquetas'];
-const H_PAR = ['id_partida','fecha','torneo','modo','equipo_1','equipo_2','ganador','puntos','apuesta_simple','apuesta_doble','monto','jornada'];
+const H_PAR = ['id_partida','fecha','torneo','modo','equipo_1','equipo_2','ganador','puntos','apuesta_simple','apuesta_doble','monto','jornada','duracion_seg'];
 const H_DET = ['id_partida','id_jugador','equipo','resultado'];
 const H_JOR = ['id_jornada','inicio','fin','estado'];   // estado: abierta | cerrada
 // en_vivo: marcador de un partido en curso. equipo_1/2 son NOMBRES (para mostrar), no ids.
-const H_LIVE = ['live_id','equipo_1','equipo_2','score_1','score_2','torneo','modo','jornada','actualizado'];
+const H_LIVE = ['live_id','equipo_1','equipo_2','score_1','score_2','torneo','modo','jornada','actualizado','inicio'];
 const LIVE_TTL_MS = 20 * 60 * 1000;            // un partido "en vivo" vence a los 20 min sin actualizar (el teléfono manda latido cada 45 s)
 const DEDUP_WINDOW_MS = 15 * 60 * 1000;        // candado: misma partida en la misma jornada dentro de 15 min = duplicado
 
@@ -54,6 +54,8 @@ function ensureSheet_(ss, name, headers) {
 /* ============ Helpers de saneo (validación / límites) ============ */
 function s_(v, max) { return String(v == null ? '' : v).trim().slice(0, max || 80); }
 function num_(v) { var n = Number(v); return isFinite(n) ? n : 0; }
+// Duración de la partida en segundos (cronómetro del teléfono). Vacío si no vino o es absurda (>6 h).
+function durSeg_(v) { var n = Math.round(Number(v)); return (isFinite(n) && n > 0 && n <= 6 * 3600) ? n : ''; }
 function norm_(s) { return String(s == null ? '' : s).trim().toLowerCase(); }
 // Clave de una partida para detectar duplicados: ids del ganador y del perdedor, ordenados (independiente del orden Nos/Ellos).
 function claveDup_(ganadorIds, perdedorIds) {
@@ -171,7 +173,8 @@ function guardarPartida_(body) {
   shP.appendRow([
     idPartida, new Date(), s_(body.torneo, 24), s_(body.modo, 8),
     eq[1].join(','), eq[2].join(','), 'Equipo ' + ganador, s_(body.puntos, 16),
-    num_(body.apuesta_simple), num_(body.apuesta_doble), num_(body.monto), s_(body.jornada, 24)
+    num_(body.apuesta_simple), num_(body.apuesta_doble), num_(body.monto), s_(body.jornada, 24),
+    durSeg_(body.duracion_seg)
   ]);
 
   // 3) Detalle por jugador + actualizar métricas (victorias, NO plata)
@@ -426,7 +429,7 @@ function liveSet_(body) {
   setup();
   const sh = ss.getSheetByName(T_LIVE);
   var fila = [ id, s_(body.equipo_1, 120), s_(body.equipo_2, 120), num_(body.score_1), num_(body.score_2),
-               s_(body.torneo, 24), s_(body.modo, 8), s_(body.jornada, 24), new Date() ];
+               s_(body.torneo, 24), s_(body.modo, 8), s_(body.jornada, 24), new Date(), num_(body.inicio) || '' ];
   const data = sh.getDataRange().getValues();
   for (var i = 1; i < data.length; i++) {
     if (String(data[i][0]) === id) { sh.getRange(i + 1, 1, 1, fila.length).setValues([fila]); return { ok:true }; }

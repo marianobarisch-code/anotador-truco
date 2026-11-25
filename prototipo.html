@@ -41,6 +41,8 @@
     color:var(--gold); font-size:19px; display:flex; align-items:center; justify-content:center; }
   .cbtn:active{ transform:scale(.92); }
   .htitle{ color:var(--gold); font-size:20px; font-weight:600; letter-spacing:.4px; }
+  .htimer{ font-variant-numeric:tabular-nums; letter-spacing:.8px; }
+  .htimer.done{ color:#7ec47e; }
 
   .view{ flex:1 1 auto; position:relative; overflow:hidden; }
   .scroll{ position:absolute; inset:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px; }
@@ -407,6 +409,13 @@
   function jornadaDeP(pa){ var v=(pa.jornada!=null && pa.jornada!=="")?String(pa.jornada):""; if(v) return v; return loadMap()[String(pa.id_partida)]||""; }
 
   function hhmm(ms){ var x=new Date(ms); return ("0"+x.getHours()).slice(-2)+":"+("0"+x.getMinutes()).slice(-2); }
+  // Cronómetro: "12:05" o "1:02:05" (en vivo) y "38 min" / "1 h 05 min" (duración guardada)
+  function reloj(seg){ seg=Math.max(0,Math.floor(seg)); var h=Math.floor(seg/3600), m=Math.floor(seg%3600/60), s=seg%60;
+    return (h?h+":"+("0"+m).slice(-2):m)+":"+("0"+s).slice(-2); }
+  function durTxt(seg){ seg=Number(seg); if(!seg||seg<=0) return ""; var m=Math.max(1,Math.round(seg/60)); return m<60?m+" min":Math.floor(m/60)+" h "+("0"+m%60).slice(-2)+" min"; }
+  // segundos que lleva (o duró) la partida en curso; null si no tiene hora de inicio
+  function durActiva(g){ if(!g||!g.startedAt) return null; return ((g.endedAt||Date.now())-g.startedAt)/1000; }
+  function timerTxt(){ var sg=durActiva(state.active); return sg==null?"Anotador":"⏱ "+reloj(sg); }
   var DIAS=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"], MESES=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
   function fechaLarga(ms){ var x=new Date(ms); return DIAS[x.getDay()]+" "+x.getDate()+" "+MESES[x.getMonth()]; }
   function jms(pa){ if(!pa.fecha) return null; var t=new Date(pa.fecha).getTime(); return isNaN(t)?null:t; }
@@ -528,7 +537,7 @@
       var n=function(t){ return t.map(function(id){ var p=player(id); return p?p.nombre:String(id); }).join(", "); };
       apiPost({action:"live_set", live_id:gg.liveId, equipo_1:n(gg.teams[0]), equipo_2:n(gg.teams[1]),
         score_1:gg.score[0], score_2:gg.score[1], torneo:gg.torneo||"", modo:gg.modo+"v"+gg.modo,
-        jornada: state.jornada?state.jornada.id:""}).catch(function(){});
+        jornada: state.jornada?state.jornada.id:"", inicio: gg.startedAt||""}).catch(function(){});
     }, 400);
   }
   function liveClear(id){ if(!id) return; clearTimeout(liveTimer); apiPost({action:"live_clear", live_id:id}).catch(function(){}); }
@@ -623,7 +632,7 @@
     else { hr.innerHTML=""; hr.removeAttribute("data-action"); hr.style.visibility="hidden"; }
 
     if(v==="anotador"){
-      title.textContent="Anotador";
+      title.innerHTML=state.active?'<span class="htimer'+(state.active.endedAt?' done':'')+'" id="htimer">'+timerTxt()+'</span>':"Anotador";
       if(!state.active){
         hr.style.visibility="hidden";
         var inner;
@@ -674,6 +683,7 @@
       if(arr.length){
         var lv=arr[0], age=Math.round(lv._age), stale=age>120;
         var txt = stale ? "⚠️ Sin señal hace "+(age<3600?Math.round(age/60)+" min":Math.round(age/3600)+" h") : "● En vivo · actualizado hace "+(age<5?"un instante":age+" s");
+        var ini=Number(lv.inicio); if(ini>0 && !stale) txt+=" · ⏱ "+reloj((ahora-ini)/1000);
         view.innerHTML=boardHTML([Number(lv.score_1)||0, Number(lv.score_2)||0], esc(lv.equipo_1), esc(lv.equipo_2), true)+
           '<div class="live-status'+(stale?' stale':'')+'">'+txt+(arr.length>1?' · +'+(arr.length-1)+' más':'')+'</div>';
       } else {
@@ -862,7 +872,7 @@
           var ganNames=idsANombres(ganEq===1?pa.equipo_1:pa.equipo_2);
           h+='<div class="pt-row"><div class="pt-main">'+
                '<div class="pt-win">'+ic("trophy",14)+' '+esc(ganNames.join(" · "))+'</div>'+
-               '<div class="pt-sub">'+hhmm(jms(pa))+' · '+esc(pa.torneo||"—")+' · '+pesos(Number(pa.monto)||0)+'</div>'+
+               '<div class="pt-sub">'+hhmm(jms(pa))+' · '+esc(pa.torneo||"—")+' · '+pesos(Number(pa.monto)||0)+(durTxt(pa.duracion_seg)?' · ⏱ '+durTxt(pa.duracion_seg):'')+'</div>'+
              '</div><button class="pt-del" data-action="del:partida" data-id="'+esc(pa.id_partida)+'" aria-label="Borrar">'+ic("trash",18)+'</button></div>';
         });
         h+='</div>';
@@ -948,7 +958,8 @@
         '<button class="primary" data-action="finalize" data-w="'+w+'">Guardar partida</button></div>';
     sc.innerHTML='<div class="modal"><div class="trophy">'+ic("trophy",42)+'</div>'+
       '<h2>¡Ganó '+(w===0?"Nos":"Ellos")+'!</h2>'+
-      '<p style="margin:6px 0 6px">'+names+'<br>+1 victoria para cada uno</p>'+montoLine+err+btns+'</div>';
+      '<p style="margin:6px 0 6px">'+names+'<br>+1 victoria para cada uno</p>'+montoLine+
+      (durActiva(g)!=null?'<p style="margin:-6px 0 14px;font-size:13px;color:#9c8a63">⏱ Duró '+reloj(durActiva(g))+'</p>':'')+err+btns+'</div>';
     sc.classList.add("show");
   }
 
@@ -1049,6 +1060,7 @@
       puntos:g.score[0]+" a "+g.score[1],
       apuesta_simple:g.apuesta.simple, apuesta_doble:g.apuesta.doble, monto:mp.monto,
       jornada: state.jornada ? state.jornada.id : "",
+      duracion_seg: durActiva(g)==null ? "" : Math.round(durActiva(g)),
       equipos:{ 1:g.teams[0].map(pp), 2:g.teams[1].map(pp) } };
     var tor=g.torneo;
     state.guardando=true; state.errorMsg=""; winnerModal(w);
@@ -1097,14 +1109,16 @@
       var chosen=ex || {id:"tmp"+(state.nextId++), nombre:nom, apellido:ape, pj:0, g:0, nuevo:true};
       if(!ex) state.players.push(chosen);
       state.setup.teams[state.sheet.t][state.sheet.s]=chosen.id; closeScrim(); return render(); }
-    if(a==="start"){ var ap=state.setup.apuesta; state.active={torneo:state.setup.torneo, modo:state.setup.modo, teams:[state.setup.teams[0].slice(),state.setup.teams[1].slice()], score:[0,0], apuesta:{simple:ap.simple, doble:ap.doble}, liveId:liveId()}; saveActive(); state.view="anotador"; render(); livePush(); return; }
+    if(a==="start"){ var ap=state.setup.apuesta; state.active={torneo:state.setup.torneo, modo:state.setup.modo, teams:[state.setup.teams[0].slice(),state.setup.teams[1].slice()], score:[0,0], apuesta:{simple:ap.simple, doble:ap.doble}, liveId:liveId(), startedAt:Date.now(), endedAt:null}; saveActive(); state.view="anotador"; render(); livePush(); return; }
     if(a==="plus"||a==="minus"){ var ti=+t.getAttribute("data-t"); var d=a==="plus"?1:-1;
       if(state.view==="tanteador"){ var q=state.quick; q.score[ti]=Math.max(0,Math.min(LIMIT,q.score[ti]+d)); saveQuick(); render(); if(q.score[ti]>=LIMIT) quickWinner(ti); return; }
-      var g=state.active; if(!g) return; g.score[ti]=Math.max(0,Math.min(LIMIT,g.score[ti]+d)); saveActive(); render(); livePush();
+      var g=state.active; if(!g) return; g.score[ti]=Math.max(0,Math.min(LIMIT,g.score[ti]+d));
+      if(g.score[0]>=LIMIT||g.score[1]>=LIMIT){ if(!g.endedAt) g.endedAt=Date.now(); } else g.endedAt=null;   // el reloj se frena en el punto 30
+      saveActive(); render(); livePush();
       if(g.score[ti]>=LIMIT) winnerModal(ti); return; }
     if(a==="discard"){ if(state.active) liveClear(state.active.liveId); state.active=null; clearActive(); closeScrim(); state.view="anotador"; return render(); }
     if(a==="nuevo:partido"){ var ga=state.active; if(ga && (ga.score[0]>0 || ga.score[1]>0)) return newMatchModal(); if(ga) liveClear(ga.liveId); state.active=null; clearActive(); state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; state.view="nueva"; return render(); }
-    if(a==="newmatch:win"){ var nw=+t.getAttribute("data-w"); closeScrim(); if(state.active){ state.active.score[nw]=LIMIT; saveActive(); render(); winnerModal(nw); } return; }
+    if(a==="newmatch:win"){ var nw=+t.getAttribute("data-w"); closeScrim(); if(state.active){ state.active.score[nw]=LIMIT; if(!state.active.endedAt) state.active.endedAt=Date.now(); saveActive(); render(); winnerModal(nw); } return; }
     if(a==="newmatch:discard"){ if(state.active) liveClear(state.active.liveId); state.active=null; clearActive(); state.setup={torneo:null, modo:3, teams:[[null,null,null],[null,null,null]], apuesta:{preset:"custom",simple:null,doble:null}}; closeScrim(); state.view="nueva"; return render(); }
     if(a==="quick:reset"){ state.quick.score=[0,0]; saveQuick(); closeScrim(); state.view="tanteador"; return render(); }
     if(a==="finalize"){ return finalize(+t.getAttribute("data-w")); }
@@ -1146,7 +1160,8 @@
     if(state.active && state.active.liveId) livePush();      // el que anota: re-manda el marcador al volver
     if(state.view==="envivo") liveFetch();                    // el que mira: re-consulta al instante
   });
-  setInterval(function(){ if(state.active && state.active.liveId) livePush(); }, 45000);   // latido: el marcador sigue "vivo" aunque no toques
+  setInterval(function(){ if(state.active && state.active.liveId) livePush(); }, 45000);
+  setInterval(function(){ var el=document.getElementById("htimer"); if(el && state.view==="anotador" && state.active) el.textContent=timerTxt(); }, 1000);   // cronómetro   // latido: el marcador sigue "vivo" aunque no toques
 
   state.quick=loadQuick();       // tanteador rápido persistido
   state.lastWinner=loadLastWin(); // último equipo ganador para "Repetir equipo ganador"
